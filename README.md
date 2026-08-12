@@ -1,0 +1,101 @@
+# lit-panel（文学评审团）
+
+## 是什么 / 为什么
+
+数值总分是一种幻觉：给一篇回忆录章节打"7.5 分"看似客观，实则把无数个不可通约的判断压成一个虚假的精确数字，掩盖了它到底好在哪、坏在哪、谁说了算。lit-panel 反其道而行——它不产出任何分数，只产出**判据（这一条具体行为是否成立）+ 证据（逐字引文，机械核验过）+ 带位（A/B/C 三档定性归类，而非连续刻度）**。这三者是实的，可复核、可追问、可反驳；分数不是。
+
+lit-panel 是一个**十一席互盲评审团**：面对同一篇中文回忆录/叙事文本，十一个评审席各自独立阅读、各自套用自己的判据文件、互不可见彼此的结论（互盲），最后由编排逻辑做显式规则合成——不做二次审美裁决，只做机械汇总。忠实性、连贯性、AI 痕迹、叙事结构、人物心理、语言节奏、情感抵达、素读者体验、原创性、编辑意图、他者伦理，十一个维度各司其职，其中素读者席（08）读前完全看不到任何判据，只给未经污染的第一直觉体验报告。
+
+### 席位一览表
+
+| # | agent name | 方向一句话 | 激活条件 | 带位角色 |
+|---|---|---|---|---|
+| 01 | lit-fidelity | 只认来源：claim 抽查回溯，五态标签（SUPPORTED/PERMISSIBLE_INFERENCE/UNSUPPORTED/CONTRADICTED/UNVERIFIABLE） | 提供 `--source` 时 | 忠实带唯一来源，**红线否决权** |
+| 02 | lit-continuity | 文本内自洽：时间/人物/事实/规范一致性 | 总是 | 证据；确证矛盾时有**红线否决权** |
+| 03 | lit-slop | AI 特有痕迹：对照模式库做 span 标记 | 总是 | 证据+特征，无否决权 |
+| 04 | lit-structure | 叙事结构：场景/概述、铺垫回应、章法 | 总是 | 文学带核心席 |
+| 05 | lit-character | 人物与心理：动机连续、对话口吻、拒绝粉饰 | 总是 | 文学带核心席 |
+| 06 | lit-prose | 语言与节奏：声音一致、承接、词语精度 | 总是 | 文学带核心席 |
+| 07 | lit-resonance | 情感与抵达：processed vs lived、拒绝硬推 | 总是 | 文学带核心席 |
+| 08 | lit-naive-reader | 素读者：**读前无判据**，纯体验报告，读后补测 | 总是 | 参与合成判断，不入判据向量 |
+| 09 | lit-originality | 原创性与陈套：人类写作意义上的套路、个性色彩 | 总是 | 文学带核心席 |
+| 10 | lit-brief | 编辑意图：brief 要素落实、戏剧目的达成 | 提供 `--brief` 时 | 不入带位，fail 转修订项 |
+| 11 | lit-ethics | 他者与伦理：单方转述定性、隐私必要性、弱者尊严 | 回忆录默认开启 | 不入带位，发现一律转**人工仲裁** |
+
+预设分档：`quick` = 01,02,03,08；`standard` = 01–08；`full` = 01–11；`custom` 从上表任选（配合 `--readers` 显式指定）。条件激活席在条件不满足时自动跳过，并在报告中注明。
+
+## 安装
+
+### Claude Code（插件形态）
+
+三种方式，按需选用：
+
+```bash
+# 方式一：手动放入本地 skills 目录（下次启动 claude 时自动加载为 lit-panel@skills-dir）
+cp -r /path/to/lit-panel ~/.claude/skills/lit-panel
+# 也可以用软链接，方便跟随仓库更新：
+ln -s /path/to/lit-panel ~/.claude/skills/lit-panel
+```
+
+```bash
+# 方式二：注册为本地 marketplace 后安装（持久生效，另一条官方支持的路径）
+claude plugin marketplace add /path/to/lit-panel
+claude plugin install lit-panel
+# 若安装时提示找不到该插件，先用 `claude plugin marketplace list` 确认本地
+# marketplace 的注册名，再用 `claude plugin install lit-panel@<注册名>` 安装。
+```
+
+```bash
+# 方式三：单次会话临时加载（不做持久安装，适合先试用）
+claude --plugin-dir /path/to/lit-panel
+```
+
+安装完成后，`/lit-review`、`/lit-compare` 两个命令即可用，十一位评审席作为 subagent 由 Claude Code 原生并行调度。
+
+### Codex（skill 形态）
+
+```bash
+# 推荐：用安装脚本（会检测已存在安装并询问是否覆盖）
+./scripts/install-codex.sh
+
+# 或手动复制
+cp -r skills/lit-panel ~/.agents/skills/lit-panel
+```
+
+Codex 没有 Claude Code 那样的原生并行 subagent 机制，因此十一席评审在 Codex 下由 `SKILL.md` 编排**逐席顺序执行**——互盲语义完全等价（每席仍是独立、互不可见彼此结论的上下文），只是牺牲了墙钟并行度，不影响评审结论的独立性与可信度。
+
+## 用法示例
+
+```
+/lit-review 章节.md --source 访谈.md --preset standard
+```
+对单篇文本做标准八席评审（01–08），并用访谈素材激活席01 的忠实审读。
+
+```
+/lit-compare a.md b.md
+```
+对两篇同源同任务的文本做十一席默认对比评审，每席换序双判，只出偏好分布，不出总比分。
+
+更多参数（`--brief` / `--stability` / `--readers`）见 `commands/lit-review.md`、`commands/lit-compare.md`，或直接读 `skills/lit-panel/SKILL.md`。
+
+## 重要纪律（面向用户）
+
+- **生成与评审分会话**：不要在同一次对话里既让模型写稿、又让它评审自己刚写的稿——生成侧的自我评价不是评审真值。
+- **建议跨家族评审**：Claude 生成 → Codex 评审，或反之，能显著降低"同一套潜在偏见既写又判"的同源盲区。
+- **报告不含数值总分是设计，不是缺陷**：看到只有带位（A/B/C）而没有分数，这是刻意的——避免虚假精确度绑架编辑判断。
+- **席11（他者与伦理）的发现必须人工裁决**：只要席11 有发现，一律进入人工仲裁区，既不会被自动放行，也不会自动阻断产出；这类判断关乎对不在场第三方的公平，不适合机器自动拍板。
+
+## 自定义
+
+- **判据文件可编辑**：`skills/lit-panel/references/criteria/*.md` 里每条判据的措辞可以打磨，但不能改变其语义与极性（`[通过]`/`[风险]`）。
+- **淘汰记 CHANGELOG**：判据的取舍、替换、废弃都要记入 `skills/lit-panel/references/criteria/CHANGELOG.md`，一行一条，写明原因。
+- **加席**：在 `skills/lit-panel/references/registry.md` 注册表里加一行，并新增两个文件——一个 `agents/*.md` 席位定义、一个对应的 `criteria/*.md` 判据文件。新判据须过四条准入规则（判据设计元规范，见 `docs/criteria-pool.md`）：
+  1. **RaR 四要件**：有专家指导/参考依据；覆盖常见失败模式；按 core/extended/致命分层，禁数值权重；每条自足、可独立回答。
+  2. **HealthBench 三规则**：一条判据只查一个可观察行为；"例如"后的列举非穷举；`[风险]` 判据判断的是坏现象是否出现。
+  3. **Antislop 语境警告**：模式命中不等于该处有错，词表匹配只是证据，最终判定必须过语境审查。
+  4. **消融警告**：不批量生成负面判据凑数，不用任意固定权重制造伪精确。
+
+## 隐私声明
+
+- 包内 `skills/lit-panel/references/anchors/`（A/B/C 三档参照样例）全部为**纯合成文本**，不含任何真实传主信息。
+- 你提交评审的文本与素材（`--source`/`--brief`）只在你本地发起的 Claude Code / Codex 会话与其模型 API 之间流转，lit-panel 本身不做任何额外的网络传输、收集或外发——它不引入除"运行评审所必需的模型调用"之外的数据出口。

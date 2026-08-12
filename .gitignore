@@ -1,0 +1,6 @@
+# 真实传主素材，仅本地测试用，绝不进分发包
+tests/fixtures/
+# 测试运行产物
+tests/runs/
+.omc/
+.DS_Store

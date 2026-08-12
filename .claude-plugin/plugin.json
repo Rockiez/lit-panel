@@ -1,0 +1,17 @@
+{
+  "name": "lit-panel",
+  "version": "0.1.0",
+  "description": "文学评审团：十一席并行互盲评审中文回忆录/叙事文本（带位+证据，禁数值分）",
+  "author": {
+    "name": "Anamnese"
+  },
+  "license": "MIT",
+  "keywords": [
+    "文学评审",
+    "回忆录",
+    "叙事文本",
+    "多智能体评审",
+    "中文写作",
+    "reviewer-panel"
+  ]
+}

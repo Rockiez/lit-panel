@@ -1,6 +1,6 @@
 # 席位注册表
 
-本文件是 orchestrator 的**席位数据源**：`skills/lit-panel/SKILL.md` 的编排逻辑从本表读取本轮候选席位，不在 SKILL.md 内重复硬编码席位清单。本表内容转录自 `docs/DESIGN.md` 第 3 节；**若本表与 `docs/DESIGN.md` 冲突，以 `docs/DESIGN.md` 为准**（DESIGN.md 是构建冻结契约）。
+本文件是 orchestrator 的**席位数据源**：`skills/lit-panel/SKILL.md` 的编排逻辑从本表读取本轮候选席位，不在 SKILL.md 内重复硬编码席位清单。本表内容转录自 `docs/DESIGN.md` 第 3 节（构建期规格，不随包分发——已安装的副本目录中不包含该文件）。**若发现本表与 `docs/DESIGN.md` 不一致，属构建缺陷——执行时以本表（分发副本内容，随 `SKILL.md` 一并生效）为准，并请向项目仓库报告**。
 
 ## 席位表（11 席）
 

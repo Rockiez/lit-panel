@@ -127,11 +127,21 @@ ln -s /path/to/lit-panel ~/.claude/skills/lit-panel
 
 ```bash
 # 方式二：注册为本地 marketplace 后安装（持久生效，另一条官方支持的路径）
+# 本仓库根目录已含 .claude-plugin/marketplace.json，无需自建。
 claude plugin marketplace add /path/to/lit-panel
 claude plugin install lit-panel
-# 若安装时提示找不到该插件，先用 `claude plugin marketplace list` 确认本地
-# marketplace 的注册名，再用 `claude plugin install lit-panel@<注册名>` 安装。
 ```
+
+已在隔离 `HOME` 环境实测跑通（`HOME=$(mktemp -d) claude plugin marketplace add ...`），两条命令依次输出：
+
+```
+✔ Successfully added marketplace: lit-panel (declared in user settings)
+✔ Successfully installed plugin: lit-panel@lit-panel (scope: user)
+```
+
+`claude plugin details lit-panel` 可确认组件清单：3 个 skills（`lit-panel`/`lit-review`/`lit-compare`）+ 11 个 agents，与源码目录结构一致。若你的本地 marketplace 注册名与插件名不同（比如你 fork 后改了 `marketplace.json` 里的 `name`），用 `claude plugin marketplace list` 确认注册名，再 `claude plugin install lit-panel@<注册名>` 安装。
+
+**实测发现的一个细节**：装为 plugin 后，`claude plugin details` 列出的 agent 组件名是**文件名**（如 `ethics-reviewer`），不是 agent 定义文件 frontmatter 里的 `name` 字段（如 `lit-ethics`）——`SKILL.md` §3.3 的"派发降级规则"就是为这种情况准备的：若按 `registry.md` 的 agent name 派发 Task 子代理失败，改用平台实际列出的标识符重试。
 
 ```bash
 # 方式三：单次会话临时加载（不做持久安装，适合先试用）
@@ -184,7 +194,7 @@ Codex 没有 Claude Code 那样的原生并行 subagent 机制，因此十一席
 
 **带位含义**——带位只有两条独立的轨道，不合并成一个总分：
 
-忠实带（完全基于席01五态分布，未提供 `--source` 时记 N/A）：A=五态分布完全干净；B=只存在 severity=低的问题，或只有 PERMISSIBLE_INFERENCE/UNVERIFIABLE 而无 UNSUPPORTED/CONTRADICTED；C=存在 CONTRADICTED，或存在 severity=高的 UNSUPPORTED。
+忠实带（完全基于席01五态分布，未提供 `--source` 时记 N/A）：A=五态分布完全干净；B=不存在 CONTRADICTED、且不存在 severity=高的 UNSUPPORTED，但存在 severity=中/低的问题，或只有 PERMISSIBLE_INFERENCE/UNVERIFIABLE 而无 UNSUPPORTED/CONTRADICTED；C=存在 CONTRADICTED，或存在 severity=高的 UNSUPPORTED。
 
 文学带（基于席04/05/06/07/09的 veto/core 判据；`quick` 预设不含任何文学带核心席时不产出该带位，报告记"预设未覆盖"）：分级规则见上文"三层判据带位"；此外还有一个特殊状态——"**A候选（待人工确认——判据与读者感受分歧）**"，即素读者报警器触发时的输出。
 
@@ -248,6 +258,14 @@ Codex 没有 Claude Code 那样的原生并行 subagent 机制，因此十一席
 
 **LLM 文学判断有天花板，评审团压缩的是方差，不是替代终审**：十一席互盲+机械核验+显式规则合成，能做到的是把"随手打个分"里的主观随意性和一次性偏差压下去，让判断变得可复核、可追问、可反驳。它做不到的是替代人类编辑或评论家的终审判断——分歧区特意保留"评审席之间也会互相不同意"这件事，不试图用更精巧的合成规则把分歧抹平成一个假装一致的结论。
 
+### 验证边界（截至 v0.2.1）
+
+以下机制**已有真机执行证据**（至少完整跑过一次评审并留有记录）：互盲分发（Claude Code 并行 Task 子代理路径、Codex 顺序模拟路径均跑过）；逐字核验+注毒作废（篡改一条引文后重跑核验，确认核验管道真的会拦下捏造引文，不是自我声明）；`quick`/`standard` 两档预设的报告组装；Codex 顺序路径；跨家族/异族评审（用不同模型家族执行评审）。
+
+以下机制是 v0.2.0 设计修订新增或改造的，**截至 v0.2.1 尚未经过端到端真机执行验证**，只经过静态审核与逻辑推演，还没有真实跑过一次完整评审来确认它们在实践中真的按预期工作：veto 三层带位规则（veto/普通 core/extended 分级与对应的严重度分档）；素读者报警器（"传播意愿"第四问+强制人工仲裁分支）；席01忠实带与红线区（此前几次真机测试均未提供 `--source`，忠实带全程记 N/A，从未真正跑过 CONTRADICTED/UNSUPPORTED 判定与红线区生成）；席10（编辑意图审读，需 `--brief`）；`--stability` 稳定性自检；`/lit-compare` 对比模式；`--readers` 取值大于 1 的多读者聚合；以及**装为 Claude Code plugin 之后**的原生并行调度（本轮只验证了 marketplace 安装步骤本身能跑通并列出正确的组件清单，没有验证安装后实际发起一次并行评审）。
+
+这份清单会随后续真机测试更新——在这些机制被验证前，请把它们当作"设计上自洽、尚未实证"，不要当作"已验证可靠"。
+
 ## 隐私
 
 - 包内 `skills/lit-panel/references/anchors/`（A/B/C 三档参照样例）全部为**纯合成文本**，不含任何真实传主信息。
@@ -258,7 +276,7 @@ Codex 没有 Claude Code 那样的原生并行 subagent 机制，因此十一席
 
 判据不是凭空写的。每条判据都带溯源标签（【已核实】/【转译】/【二手待核】/【自研】），完整的逐条溯源清单见 `docs/criteria-pool.md`；这里只列这套判据体系借助最多的几个来源：
 
-- **TTCW**（Torrance Test of Creative Writing）——叙事节奏、场景/概述平衡、结尾自然度、转折合理性、人物复杂度、情感灵活性、修辞复杂度等一整批 TW 系列判据的直接转译来源，分布在席04/05/06/07/09。
+- **TTCW**（Torrance Test of Creative Writing）——叙事节奏、场景/概述平衡、结尾自然度、转折合理性、人物复杂度、情感灵活性、修辞复杂度等一整批 TW 系列判据的直接转译来源，主要分布在席04/05/06/07/09，另有 TW5（"故事的各元素共同构成统一、可理解、令人满足的整体"）并入席02（一致性审读），作为该席的整体连贯性收尾判据。
 - **ConStory**——忠实审读与一致性审读的核心事实/一致性冲突分类法（命名混淆、数量冲突、时间冲突、同时性冲突、记忆冲突、地理冲突、社会规范违反等），两席判据的最大宗来源。
 - **Measuring AI Slop**（配合 Antislop 词表法）——席03中文AI痕迹猎手的三主题十一维分类框架（密度/模板化/重复/语言不自然/冗长/用词失当/语气语域等），以及"词表命中不等于该处有错，判定必须过语境审"这条纪律的方法论来源。
 - **EssayBench**——结构、人物、语言、情感多席里大量叙事写作技法判据的来源（选材、层次、人物塑造、环境描写、段落配置等）。

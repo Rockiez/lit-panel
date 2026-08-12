@@ -14,6 +14,8 @@
 
 各席 veto 表结构：独立的"## veto 判据表"小节，位于该文件"## core 判据表"之前；对应的 core 表已移除这些行。判定提示同步补充"veto 判据"专款说明严重度分档逻辑，并把原"core 判据任一 NO 即封顶 C"改写为"其余 core 判据任一 NO 最高封顶 B"。
 
+**补记（修正范围声明）**：本节最初提交时的"同步完成"表述有误——veto 分级落地时只改动了 `skills/lit-panel/references/criteria/04-09-*.md` 五个**判据文件**，对应的 `agents/{structure,character,prose,resonance,originality}-reviewer.md` 五个**席位人设文件**当时仍停留在 v0.1 表述（"core 判据任一 NO 会使文学带封顶 C"），其中 `structure-reviewer.md` 还残留了已废弃的"席08 体验报告正向"从句。这一遗漏在后续一轮全链核查中发现并补齐：五个 agents 文件的带位描述已改写为 veto/core 两层口径，逐席点出各自的 veto id；`structure-reviewer.md` 的过期从句已删除。记录于此，作为"声明同步完成前，需要同时核对 criteria 与 agents 两侧文件"这条经验的存档。
+
 ### 席02 微观连续性扩充（C8、C9）
 
 新增两条 extended 判据，均已同步补入 `docs/criteria-pool.md` 席02节：

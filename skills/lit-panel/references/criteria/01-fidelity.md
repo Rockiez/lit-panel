@@ -18,6 +18,8 @@
 
 若同一断言对应多份来源素材，以最直接相关的一份为准；来源本身存在内部矛盾时，判 UNVERIFIABLE 并在 note 中说明。
 
+**输出编码**：五态标签不是内部思考步骤，必须体现在输出里——`note` 字段**开头**固定写五态标签之一（`SUPPORTED`/`PERMISSIBLE_INFERENCE`/`UNSUPPORTED`/`CONTRADICTED`/`UNVERIFIABLE`，直接用英文态名，不翻译），格式为 `<五态标签> 一句理由；来源引文：「...」`（来源引文标记见 `skills/lit-panel/SKILL.md` §3.4）。这是 orchestrator 阶段三判定忠实带与红线区时的直接依据，不能只在判定过程中心里过一遍五态就跳过不写。
+
 ## core 判据表
 
 | id | 极性 | 判据句 | 证据要求 | 溯源 |

@@ -1,0 +1,20 @@
+{
+  "name": "lit-panel",
+  "owner": {
+    "name": "Anamnese"
+  },
+  "metadata": {
+    "description": "lit-panel 自托管插件市场——指向本仓库自身，供 `claude plugin marketplace add` 注册后再 `claude plugin install lit-panel` 安装",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "lit-panel",
+      "description": "文学评审团：十一席并行互盲评审中文回忆录/叙事文本（带位+证据，禁数值分）",
+      "author": {
+        "name": "Anamnese"
+      },
+      "source": "./"
+    }
+  ]
+}

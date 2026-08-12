@@ -65,7 +65,7 @@
 ### 操作步骤
 
 1. 在本文件"席位表"追加一行，分配下一个空闲的两位数 `#` 编号，按上表 8 列格式填写完整（不得留空列，"总是"以外的激活条件需和 SKILL.md 第 1 节的条件激活规则对齐，如需新增第四种条件类型，需同步更新 SKILL.md 第 1 节，不能只加表格行）。
-2. 在 `agents/` 下新增 `<new-agent-file>.md`，遵循 `docs/DESIGN.md` §8 的 frontmatter 规范：`name`（=新行 agent name）、`description`（何时用+一句方向）、`tools: Read, Grep, Glob`（只读）；正文=席位 persona + 工作流（读判据文件→读文本→按 `skills/lit-panel/SKILL.md` 3.4 节输出契约作答）+ 纪律。
-3. 在 `skills/lit-panel/references/criteria/` 下新增 `<NN>-<slug>.md`，遵循 `docs/DESIGN.md` §6 的判据文件规范（`id | 极性 | core/extended | 判据句 | 证据要求 | 溯源标签`，从 `docs/criteria-pool.md` 选取定稿或标注【自研】+理由），并在 `criteria/CHANGELOG.md` 记录本次判据取舍。
+2. 在 `agents/` 下新增 `<new-agent-file>.md`，遵循 `docs/DESIGN.md` §8 的 frontmatter 规范（**该文件是构建期规格，不随包分发**——开新席是开发者在完整源码仓库中进行的操作，若手头只有已安装的分发副本，参照现有 `agents/*.md` 任一文件的 frontmatter 结构类比即可）：`name`（=新行 agent name）、`description`（何时用+一句方向）、`tools: Read, Grep, Glob`（只读）；正文=席位 persona + 工作流（读判据文件→读文本→按 `skills/lit-panel/SKILL.md` 3.4 节输出契约作答）+ 纪律。
+3. 在 `skills/lit-panel/references/criteria/` 下新增 `<NN>-<slug>.md`，遵循 `docs/DESIGN.md` §6 的判据文件规范（**同样是构建期规格，不随包分发**，可参照现有 `criteria/*.md` 任一文件类比结构）：`id | 极性 | core/extended | 判据句 | 证据要求 | 溯源标签`，从 `docs/criteria-pool.md`（构建期取材来源，同样不随包分发）选取定稿或标注【自研】+理由，并在 `criteria/CHANGELOG.md` 记录本次判据取舍。
 4. 若新席位需要出现在某个预设分档（`quick`/`standard`/`full`）而非只能通过 `custom` 触达，同步更新本文件"预设分档定义"一节。
 5. 三步（表格行 / agent 文件 / 判据文件）必须在同一逻辑变更中一起落地；`criteria/CHANGELOG.md` 的记录和（如适用）预设分档更新一并完成，不允许只做部分步骤就视为扩席完成。

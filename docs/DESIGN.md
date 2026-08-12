@@ -1,12 +1,12 @@
-# lit-panel 设计规格（v1.0 — 构建冻结契约）
+# lit-panel 设计规格（同步至 v0.2.0 — 构建期参考文件）
 
-本文件是所有实现工作的**唯一权威规格**。落地自 Notion 计划 v3.3（文学评审团 skill）。冲突时以本文件为准。
+本文件是**构建期参考规格**，记录 lit-panel 的设计意图与历史演进，供实现工作对照；**不随包分发**（已安装的分发副本目录中不包含本文件）。落地自 Notion 计划 v3.3（文学评审团 skill）。**运行时唯一权威是 `skills/lit-panel/SKILL.md`**（该文件自身开头即声明这一点）——若发现本文件与 SKILL.md 不一致，执行时以 SKILL.md 为准，并把这种不一致视为本文件需要同步更新的信号，而不是反过来要求 SKILL.md 向本文件看齐。
 
 ## 1. 目标与形态
 
 `lit-panel`（文学评审团）：对 AI 生成的中文回忆录/叙事文本做**多席并行互盲评审**的可分发插件。
 - **Claude Code**：以 plugin 形态安装（agents + commands + skills）。
-- **Codex**：`skills/lit-panel/` 目录整体复制/软链到 `~/.agents/skills/lit-panel/` 即可用；无并行 subagent 时**逐席顺序执行，语义等价**（互盲=每席独立上下文，并行只是墙钟优化）。
+- **Codex**：`skills/lit-panel/` 目录整体复制/软链到 `~/.agents/skills/lit-panel/` 即可用；无并行 subagent 时**逐席顺序执行，力求等价的顺序模拟**（互盲=每席独立上下文；并行路径下这是结构性保证，顺序路径下靠"显式声明丢弃上一席结论"模拟，不是真正的上下文隔离，细节见 README"已知边界与风险"）。
 - 核心立场：**刻度是幻觉，判据、证据和排序是实的**。禁止任何数值总分/小数评分；输出只有带位（A/B/C）+ 判据证据 + 分歧 + 修订包。
 
 ## 2. 目录结构（冻结）
@@ -34,7 +34,7 @@ lit-panel/
 │       └── report-template.md
 ├── scripts/install-codex.sh
 ├── README.md  /  LICENSE (MIT)
-└── tests/ (fixtures 已 gitignore，不随包分发)
+└── tests/ (fixtures 与 runs 均已 gitignore，不随包分发；tests/README.md 说明测试策略，随包分发；scripts/verify-quotes.py 是不含真实引文的通用核验工具，随包分发)
 ```
 
 ## 3. 席位注册表（11 席）
@@ -89,7 +89,7 @@ lit-panel/
 2. **判据向量**：全部有效判定按席归组列出。**禁止算比例分。**
 3. **带位规则**：文学带——席04/05/06/07/09 的 core 判据分 veto/普通两层（veto=各席至多2条最致命判据，逐席清单见 `criteria/CHANGELOG.md` v0.2.0 节）：veto 问题判定且高严重度 → 封顶 C；veto 问题判定但中/低严重度 → 最高 B 且转人工仲裁；普通 core 任一问题判定 → 最高 B；core 全过（零问题判定）→ A 候选（结合 anchors 对照）。素读者不参与 A 候选判定本身，改为报警器：core 全过时若素读者传播意愿答"不愿意" → 强制人工仲裁，不自动发 A（细则见 SKILL.md §5.3）。忠实带——席01 五态分布（CONTRADICTED 或高严重度 UNSUPPORTED 存在 → C；仅低严重度问题 → B；干净 → A）；无 source 时记 N/A。
 4. **分歧区**：席位间对同一文本区域结论相反 → 并列呈现双方判定+引文，**不平均、不裁决**。
-5. **人工仲裁区**：全部 ABSTAIN + 席11 全部发现 + 作废判定。
+5. **人工仲裁区**（v0.2.0 起扩为六类，细则见 SKILL.md §5.5）：全部 ABSTAIN（含 NA 无适用性理由降级而来的 ABSTAIN）+ 席11 全部判定（无论 verdict 为何）+ 阶段二作废判定 + veto 判据问题判定且中/低严重度 + veto/core 级判据的 NA + 素读者报警器触发记录。
 6. **决策建议**：按矩阵（忠实优先）：忠实A×文学A=交付；忠实C 或 文学C=重写建议；其余=修订后交付；忠实与文学同为N/A时不落入"其余"分支，改为仅诊断（不定带，列出全部问题判定）。席10 fail 直接追加修订项。输出为**建议**，含终止提示（建议最多 2 轮重写后转人工）。
 7. **修订包**：全部问题判定（[通过]极性判据的NO + [风险]极性判据命中问题的YES）的 id+引文+严重度+修改建议，可直接喂给修订会话。
 
@@ -118,7 +118,8 @@ lit-panel/
 
 ## 8. Claude Code plugin 细则
 
-- `.claude-plugin/plugin.json`：name "lit-panel"、version "0.1.0"、description（中文）、author。
+- `.claude-plugin/plugin.json`：name "lit-panel"、version "0.2.0"、description（中文）、author、homepage、repository。
+- `.claude-plugin/marketplace.json`：自托管本仓库为 marketplace（`source: "./"`），供 `claude plugin marketplace add` + `claude plugin install lit-panel` 两步安装路径使用（已实测跑通，见 README 安装节）。
 - agents/*.md frontmatter：`name`（表中 agent name）、`description`（何时用+一句方向）、`tools: Read, Grep, Glob`（只读）。正文=席位 persona + 工作流（读判据文件→读文本→输出契约）+ 纪律。
 - commands/*.md：frontmatter `description`；正文指引主会话加载 `skills/lit-panel/SKILL.md` 并按其执行，参数说明（--source/--brief/--preset/--stability）。
 - SKILL.md frontmatter：`name: lit-panel`、`description`（触发场景：评审/打分/审稿中文回忆录、叙事文本时）。

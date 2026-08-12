@@ -9,7 +9,7 @@ description: 对两篇同源同任务的中文回忆录/叙事文本发起十一
 ## 用法
 
 ```
-/lit-compare <文本A路径> <文本B路径> [--source <素材路径>] [--brief <brief路径或文本>] [--preset quick|standard|full|custom] [--stability] [--readers <席位列表>]
+/lit-compare <文本A路径> <文本B路径> [--source <素材路径>] [--brief <brief路径或文本>] [--preset quick|standard|full|custom(<列表>)] [--stability] [--readers=<N>]
 ```
 
 示例：
@@ -29,9 +29,9 @@ $ARGUMENTS
 | `<文本A路径> <文本B路径>`（位置参数） | 必填。两篇待比较文本的文件路径，经 `$ARGUMENTS` 依次传入（A 在前，B 在后）。二者应同源同任务（如同一底稿的两个版本、或同一 brief 下的两次生成），否则对比结论无意义。 |
 | `--source <素材路径>` | 同 `/lit-review`：提供访谈/原始素材路径时激活席01（忠实审读）。 |
 | `--brief <brief路径或文本>` | 同 `/lit-review`：提供编辑意图 brief 时激活席10（任务与编辑意图审读）。 |
-| `--preset quick\|standard\|full\|custom` | 席位预设分档，缺省为 `standard`。四档定义以 `SKILL.md` 中的席位注册表为准。 |
+| `--preset quick\|standard\|full\|custom(<列表>)` | 席位预设分档，缺省为 `standard`。四档定义以 `SKILL.md` 中的席位注册表为准；`custom(<列表>)` 语法如 `custom(01,03,08)`。 |
 | `--stability` | 稳定性自检，适用范围与 `/lit-review` 相同。 |
-| `--readers <席位号或 agent name，逗号分隔>` | 显式指定本次参评席位，用法同 `/lit-review`。 |
+| `--readers=<N>` | 正整数，默认 `1`，设置席 08（素读者）的独立读者副本数，用法同 `/lit-review`。**与席位筛选无关**——筛选参评席位请用 `--preset custom(<列表>)`。 |
 
 ## 对比规则提要
 

@@ -9,7 +9,7 @@ description: 对单篇中文回忆录/叙事文本发起十一席文学评审团
 ## 用法
 
 ```
-/lit-review <被评文本路径> [--source <素材路径>] [--brief <brief路径或文本>] [--preset quick|standard|full|custom] [--stability] [--readers <席位列表>]
+/lit-review <被评文本路径> [--source <素材路径>] [--brief <brief路径或文本>] [--preset quick|standard|full|custom(<列表>)] [--stability] [--readers=<N>]
 ```
 
 示例：
@@ -29,9 +29,9 @@ $ARGUMENTS
 | `<被评文本路径>`（位置参数） | 必填。待评审的中文回忆录/叙事文本文件路径，经 `$ARGUMENTS` 传入。 |
 | `--source <素材路径>` | 提供访谈/原始素材路径时激活席01（忠实审读）；该席拥有红线否决权。缺省时席01记 N/A。 |
 | `--brief <brief路径或文本>` | 提供编辑意图 brief 时激活席10（任务与编辑意图审读）。缺省时该席跳过并在报告中注明。 |
-| `--preset quick\|standard\|full\|custom` | 席位预设分档，缺省为 `standard`。`quick`=01,02,03,08；`standard`=01–08；`full`=01–11；`custom` 需配合 `--readers` 显式指定席位。四档的确切定义以 `SKILL.md` 中的席位注册表为准。 |
+| `--preset quick\|standard\|full\|custom(<列表>)` | 席位预设分档，缺省为 `standard`。`quick`=01,02,03,08；`standard`=01–09+11（不含10；提供 `--brief` 时10自动并入）；`full`=01–11；`custom(<列表>)` 显式枚举席位号，如 `custom(01,03,08)`。四档的确切定义以 `SKILL.md` 中的席位注册表为准。 |
 | `--stability` | 稳定性自检：同文静默跑两轮，报告判据级翻转率；此模式不产出正式评审报告。 |
-| `--readers <席位号或 agent name，逗号分隔>` | 显式指定本次参评席位（如 `01,03,08` 或 `lit-fidelity,lit-slop,lit-naive-reader`），用于配合 `--preset custom` 或临时增减默认席位表；缺省按 `--preset` 对应的默认席位表执行。 |
+| `--readers=<N>` | 正整数，默认 `1`。席 08（素读者）独立读者副本数——N 个互盲的素读者各自完整走一遍两步制，报告按读者编号分节列出。**与席位筛选无关**：若要筛选参评席位，使用 `--preset custom(<列表>)`（如 `--preset custom(01,03,08)`），不要试图用 `--readers` 传席位号或 agent name。 |
 
 ## 执行纪律
 

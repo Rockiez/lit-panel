@@ -1,4 +1,4 @@
-# lit-panel 设计规格（同步至 v0.2.0 — 构建期参考文件）
+# lit-panel 设计规格（同步至 v0.3.0 — 构建期参考文件）
 
 本文件是**构建期参考规格**，记录 lit-panel 的设计意图与历史演进，供实现工作对照；**不随包分发**（已安装的分发副本目录中不包含本文件）。落地自 Notion 计划 v3.3（文学评审团 skill）。**运行时唯一权威是 `skills/lit-panel/SKILL.md`**（该文件自身开头即声明这一点）——若发现本文件与 SKILL.md 不一致，执行时以 SKILL.md 为准，并把这种不一致视为本文件需要同步更新的信号，而不是反过来要求 SKILL.md 向本文件看齐。
 
@@ -73,9 +73,9 @@ lit-panel/
 
 规则：
 - verdict ∈ {YES, NO, ABSTAIN, NA}。`[风险]` 极性判据命中问题时答 YES——**表内额外加一列 polarity 不需要**：判据文件里已标极性，orchestrator 按判据文件解释。为免混乱，席位输出时对 `[风险]` 判据在 note 首写「风险命中」或「风险未命中」。
-- **quote 必须逐字**来自被评文本（NO/YES 凡有断言必附；ABSTAIN/NA 可空）。orchestrator 用 grep 逐条核验，**查无此文的判定作废**并记入报告的「作废判定」区。
+- **quote 引证义务分级**：以下三类判定**必须**附逐字 quote——问题判定（`[通过]` 判据的 NO、`[风险]` 判据命中的 YES）、veto 判据的**任何**判定（YES 与 NO 都要，A 候选是否成立依赖这些判定的真实性）、席 01 的**全部**判定（忠实带唯一来源，全部判定都要可核验）。**普通判据（非 veto、非问题判定）的通过判定**：`location` 仍必填，`quote` 可选——没有特别值得摘录的语句时可留 `-`，不强求为了填表而找一句不痛不痒的引文。ABSTAIN/NA 可留空 quote。凡填了 quote 的判定，orchestrator 都用 grep 逐条核验，**查无此文的判定作废**并记入报告的「作废判定」区——核验范围看的是"填没填 quote"，不是判定类型。
 - **问题判定**（`[通过]` 判据的 NO；`[风险]` 判据的 YES 命中）必附严重度（高/中/低）+ 修改建议；`[风险]` 判据未命中的 NO：severity 记 `-`、note 首写「风险未命中」，无需修改建议。
-- **NA 必附理由**：NA 必附一句适用性理由（说明这条判据为何在本处不适用），无理由的 NA 按 ABSTAIN 处理；veto 或 core 级判据的 NA 一律列入报告人工仲裁区。
+- **NA 必附理由**：NA 必附一句适用性理由（说明这条判据为何在本处不适用），无理由的 NA 按 ABSTAIN 处理；**仅 veto 判据的 NA** 列入报告人工仲裁区——普通 core/extended 判据的 NA（带理由）在分席判据表里正常可见，不升级到仲裁区。
 - **quote 列只放一条逐字引文**：如判定需要展示第二处引文（前后对照/呼应），一律通过 note 字段末尾固定标记承载（如「来源引文：「…」」/「对照引文：「…」」），禁止在 quote 列用分隔符并置多条。
 - 席 01 每条判定还须附**来源侧引文**（source quote）。
 - 席 08 特殊：先输出「体验报告」（自由文本），再答 R 系列后测 + 三必答（最亮处/最闷处/一句话转述），不用判据表格式，但引证规则同样适用。
@@ -89,7 +89,7 @@ lit-panel/
 2. **判据向量**：全部有效判定按席归组列出。**禁止算比例分。**
 3. **带位规则**：文学带——席04/05/06/07/09 的 core 判据分 veto/普通两层（veto=各席至多2条最致命判据，逐席清单见 `criteria/CHANGELOG.md` v0.2.0 节）：veto 问题判定且高严重度 → 封顶 C；veto 问题判定但中/低严重度 → 最高 B 且转人工仲裁；普通 core 任一问题判定 → 最高 B；core 全过（零问题判定）→ A 候选（结合 anchors 对照）。素读者不参与 A 候选判定本身，改为报警器：core 全过时若素读者传播意愿答"不愿意" → 强制人工仲裁，不自动发 A（细则见 SKILL.md §5.3）。忠实带——席01 五态分布（CONTRADICTED 或高严重度 UNSUPPORTED 存在 → C；仅低严重度问题 → B；干净 → A）；无 source 时记 N/A。
 4. **分歧区**：席位间对同一文本区域结论相反 → 并列呈现双方判定+引文，**不平均、不裁决**。
-5. **人工仲裁区**（v0.2.0 起扩为六类，细则见 SKILL.md §5.5）：全部 ABSTAIN（含 NA 无适用性理由降级而来的 ABSTAIN）+ 席11 全部判定（无论 verdict 为何）+ 阶段二作废判定 + veto 判据问题判定且中/低严重度 + veto/core 级判据的 NA + 素读者报警器触发记录。
+5. **人工仲裁区**（v0.2.0 起扩为六类，v0.3.0 窄化第5类，细则见 SKILL.md §5.5）：全部 ABSTAIN（含 NA 无适用性理由降级而来的 ABSTAIN）+ 席11 全部判定（无论 verdict 为何）+ 阶段二作废判定 + veto 判据问题判定且中/低严重度 + **仅 veto 判据**的 NA（普通 core/extended 判据的 NA 不升级，正常呈现在分席判据表）+ 素读者报警器触发记录。
 6. **决策建议**：按矩阵（忠实优先）：忠实A×文学A=交付；忠实C 或 文学C=重写建议；其余=修订后交付；忠实与文学同为N/A时不落入"其余"分支，改为仅诊断（不定带，列出全部问题判定）。席10 fail 直接追加修订项。输出为**建议**，含终止提示（建议最多 2 轮重写后转人工）。
 7. **修订包**：全部问题判定（[通过]极性判据的NO + [风险]极性判据命中问题的YES）的 id+引文+严重度+修改建议，可直接喂给修订会话。
 
@@ -118,7 +118,7 @@ lit-panel/
 
 ## 8. Claude Code plugin 细则
 
-- `.claude-plugin/plugin.json`：name "lit-panel"、version "0.2.0"、description（中文）、author、homepage、repository。
+- `.claude-plugin/plugin.json`：name "lit-panel"、version "0.3.0"、description（中文）、author、homepage、repository。
 - `.claude-plugin/marketplace.json`：自托管本仓库为 marketplace（`source: "./"`），供 `claude plugin marketplace add` + `claude plugin install lit-panel` 两步安装路径使用（已实测跑通，见 README 安装节）。
 - agents/*.md frontmatter：`name`（表中 agent name）、`description`（何时用+一句方向）、`tools: Read, Grep, Glob`（只读）。正文=席位 persona + 工作流（读判据文件→读文本→输出契约）+ 纪律。
 - commands/*.md：frontmatter `description`；正文指引主会话加载 `skills/lit-panel/SKILL.md` 并按其执行，参数说明（--source/--brief/--preset/--stability）。

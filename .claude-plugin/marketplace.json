@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "lit-panel 自托管插件市场——指向本仓库自身，供 `claude plugin marketplace add` 注册后再 `claude plugin install lit-panel` 安装",
-    "version": "0.4.0"
+    "version": "0.4.1"
   },
   "plugins": [
     {

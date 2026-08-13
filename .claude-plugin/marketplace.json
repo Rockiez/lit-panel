@@ -5,12 +5,12 @@
   },
   "metadata": {
     "description": "lit-panel 自托管插件市场——指向本仓库自身，供 `claude plugin marketplace add` 注册后再 `claude plugin install lit-panel` 安装",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "lit-panel",
-      "description": "文学评审团：十一席并行互盲评审中文回忆录/叙事文本（带位+证据，禁数值分）",
+      "description": "文学评审团：十一席并行互盲评审中文回忆录/叙事文本，证据驱动多维评分（带位+证据+机械导出分数）",
       "author": {
         "name": "Anamnese"
       },

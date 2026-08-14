@@ -9,7 +9,7 @@ from pathlib import Path
 
 _IMPLEMENTATION = (
     Path(__file__).resolve().parent.parent
-    / "skills"
+    / "core"
     / "lit-panel"
     / "scripts"
     / "verify-quotes.py"

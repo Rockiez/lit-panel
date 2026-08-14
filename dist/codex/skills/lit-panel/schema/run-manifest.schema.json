@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rockiez/lit-panel/schema/run-manifest.schema.json",
+  "title": "lit-panel closed run manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "preset", "genre", "readers", "inputs", "cross_chapter_source", "selected_seats", "skipped_seats", "expected_outputs", "packets"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "preset": { "type": "string", "minLength": 1 },
+    "genre": { "enum": ["memoir", "other"] },
+    "readers": { "type": "integer", "minimum": 1 },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text_sha256", "source_sha256", "brief_sha256"],
+      "properties": {
+        "text_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "brief_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "cross_chapter_source": { "type": "boolean" },
+    "selected_seats": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9]{2}$" },
+      "uniqueItems": true
+    },
+    "skipped_seats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["number", "seat", "reason", "warning"],
+        "properties": {
+          "number": { "type": "string", "pattern": "^[0-9]{2}$" },
+          "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+          "reason": { "type": "string", "minLength": 1 },
+          "warning": { "type": "boolean" }
+        }
+      }
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["packet", "seat", "reader_id", "phase", "criteria_ids"],
+        "properties": {
+          "packet": { "type": "string", "pattern": "\\.json$" },
+          "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+          "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+          "phase": { "enum": ["review", "naive-reader-step-2"] },
+          "criteria_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[A-Z]+[0-9]+$" },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "packets": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "\\.json$" },
+      "uniqueItems": true
+    }
+  }
+}

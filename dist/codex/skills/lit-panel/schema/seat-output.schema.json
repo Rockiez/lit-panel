@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rockiez/lit-panel/schema/seat-output.schema.json",
+  "title": "lit-panel seat output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "seat", "phase", "criteria", "free_view"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+    "reader_id": { "type": "string", "pattern": "^reader-[0-9]{2,}$" },
+    "phase": { "enum": ["review", "naive-reader-step-2"] },
+    "criteria": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/criterion" }
+    },
+    "free_view": { "type": "string" },
+    "reader": { "$ref": "#/$defs/reader" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "phase": { "const": "naive-reader-step-2" } },
+        "required": ["phase"]
+      },
+      "then": {
+        "properties": { "seat": { "const": "lit-naive-reader" } },
+        "required": ["reader_id", "reader"]
+      },
+      "else": {
+        "properties": { "reader_id": false, "reader": false }
+      }
+    },
+    {
+      "if": {
+        "properties": { "seat": { "const": "lit-naive-reader" } },
+        "required": ["seat"]
+      },
+      "then": {
+        "properties": { "phase": { "const": "naive-reader-step-2" } },
+        "required": ["reader_id", "reader"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "seat": { "const": "lit-fidelity" } },
+        "required": ["seat"]
+      },
+      "then": {
+        "properties": {
+          "criteria": {
+            "items": { "$ref": "#/$defs/fidelityCriterion" }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "criteria": {
+            "items": {
+              "allOf": [
+                { "$ref": "#/$defs/criterion" },
+                { "properties": { "fidelity_state": false } }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "reader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["experience", "required_answers", "willing_to_share"],
+      "properties": {
+        "experience": { "type": "string", "minLength": 1 },
+        "required_answers": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "willing_to_share": { "enum": ["愿意", "不愿意"] }
+      }
+    },
+    "quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "target", "location"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "target": { "enum": ["text", "source"] },
+        "location": { "type": "string", "minLength": 1 }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "verdict", "severity", "quotes", "note"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z]+[0-9]+$" },
+        "verdict": { "enum": ["YES", "NO", "ABSTAIN", "NA"] },
+        "severity": { "enum": ["high", "medium", "low", "none"] },
+        "quotes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/quote" }
+        },
+        "note": { "type": "string", "minLength": 1 },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "fidelity_state": {
+          "enum": ["SUPPORTED", "PERMISSIBLE_INFERENCE", "UNSUPPORTED", "CONTRADICTED", "UNVERIFIABLE"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "verdict": { "enum": ["YES", "NO"] } },
+            "required": ["verdict"]
+          },
+          "then": {
+            "properties": { "quotes": { "minItems": 1 } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "verdict": { "enum": ["ABSTAIN", "NA"] } },
+            "required": ["verdict"]
+          },
+          "then": {
+            "properties": { "severity": { "const": "none" } }
+          }
+        }
+      ]
+    },
+    "fidelityCriterion": {
+      "allOf": [
+        { "$ref": "#/$defs/criterion" },
+        {
+          "required": ["fidelity_state"],
+          "if": {
+            "properties": { "verdict": { "enum": ["YES", "NO"] } },
+            "required": ["verdict"]
+          },
+          "then": {
+            "properties": {
+              "quotes": {
+                "allOf": [
+                  { "contains": { "properties": { "target": { "const": "text" } }, "required": ["target"] } },
+                  { "contains": { "properties": { "target": { "const": "source" } }, "required": ["target"] } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "fidelity_state": { "enum": ["SUPPORTED", "PERMISSIBLE_INFERENCE"] } },
+            "required": ["fidelity_state"]
+          },
+          "then": {
+            "properties": {
+              "verdict": { "enum": ["YES", "NO"] },
+              "severity": { "const": "none" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "fidelity_state": { "const": "UNSUPPORTED" } },
+            "required": ["fidelity_state"]
+          },
+          "then": {
+            "properties": {
+              "verdict": { "enum": ["YES", "NO"] },
+              "severity": { "enum": ["high", "medium", "low"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "fidelity_state": { "const": "CONTRADICTED" } },
+            "required": ["fidelity_state"]
+          },
+          "then": {
+            "properties": {
+              "verdict": { "enum": ["YES", "NO"] },
+              "severity": { "const": "high" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "fidelity_state": { "const": "UNVERIFIABLE" } },
+            "required": ["fidelity_state"]
+          },
+          "then": {
+            "properties": {
+              "verdict": { "const": "ABSTAIN" },
+              "severity": { "const": "none" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "fidelity_state": { "const": "PERMISSIBLE_INFERENCE" } },
+            "required": ["fidelity_state"]
+          },
+          "then": { "properties": { "id": { "const": "F6" } } }
+        }
+      ]
+    }
+  }
+}

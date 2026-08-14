@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rockiez/lit-panel/schema/verification-receipt.schema.json",
+  "title": "lit-panel quote verification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "inputs", "items", "summary", "invalidated_criteria"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text_sha256", "source_sha256", "seat_outputs"],
+      "properties": {
+        "text_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "seat_outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seat", "reader_id", "sha256"],
+            "properties": {
+              "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+              "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["seat", "reader_id", "criterion_id", "quote_index", "target", "status", "tier", "tier_name", "score", "reason", "matched_snippet", "matched_file"],
+        "properties": {
+          "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+          "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+          "criterion_id": { "type": "string", "pattern": "^[A-Z]+[0-9]+$" },
+          "quote_index": { "type": "integer", "minimum": 0 },
+          "target": { "enum": ["text", "source"] },
+          "status": { "enum": ["verified", "invalidated"] },
+          "tier": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "tier_name": { "enum": ["Exact", "Normalized", "Span Ellipsis", "Fuzzy Alignment", "Void"] },
+          "score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "matched_snippet": { "type": ["string", "null"] },
+          "matched_file": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified", "invalidated"],
+      "properties": {
+        "verified": { "type": "integer", "minimum": 0 },
+        "invalidated": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "invalidated_criteria": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^lit-[a-z0-9-]+(?:@reader-[0-9]{2,})?:[A-Z]+[0-9]+$" },
+      "uniqueItems": true
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rockiez/lit-panel/schema/execution-receipt.schema.json",
+  "title": "lit-panel native subagent execution receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "host", "native_subagents", "degraded", "dispatches", "naive_readers", "coverage_gaps"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "enum": ["codex", "claude-code", "antigravity"] },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "native_subagents": { "type": "boolean" },
+    "degraded": { "type": "boolean" },
+    "dispatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["packet", "packet_sha256", "seat", "reader_id", "context_id", "isolated", "status"],
+        "properties": {
+          "packet": { "type": "string", "pattern": "\\.json$" },
+          "packet_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+          "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+          "context_id": { "type": "string", "minLength": 1 },
+          "isolated": { "type": "boolean" },
+          "status": { "enum": ["completed", "failed"] }
+        }
+      }
+    },
+    "naive_readers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reader_id", "step_1_context_id", "step_2_context_id", "step_2_mode", "step_1_receipt_sha256"],
+        "properties": {
+          "reader_id": { "type": "string", "pattern": "^reader-[0-9]{2,}$" },
+          "step_1_context_id": { "type": "string", "minLength": 1 },
+          "step_2_context_id": { "type": "string", "minLength": 1 },
+          "step_2_mode": { "enum": ["follow-up", "sealed-new-context"] },
+          "step_1_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "coverage_gaps": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "native_subagents": { "const": false } }, "required": ["native_subagents"] },
+      "then": {
+        "properties": {
+          "degraded": { "const": true },
+          "coverage_gaps": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "coverage_gaps": { "minItems": 1 } }, "required": ["coverage_gaps"] },
+      "then": { "properties": { "degraded": { "const": true } } }
+    }
+  ]
+}

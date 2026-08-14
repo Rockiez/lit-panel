@@ -1,264 +1,146 @@
 [简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)
 
-# lit-panel：基于叙事学解构与多席位互盲同行评议的中文叙事/回忆录文学质量评估系统
+# lit-panel 0.5.0
 
-*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex / Google Antigravity skill.*
+面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废与质性 A/B/C/N/A 带位派生。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
 
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Version: 0.4.1](https://img.shields.io/badge/version-0.4.1-lightgrey.svg)
+## 支持矩阵
 
-> **【摘要】** 本研究针对大语言模型（LLMs）在文学批评与叙事文本评估中普遍存在的“伪精确性量化打分”（Pseudo-precise continuous scoring）、同质化审美偏见与幻觉引证等认识论困境，提出了一种面向中文回忆录与非虚构叙事的多智能体互盲同行评议系统 `lit-panel`。系统植根于经典叙事学（Narratology）与托兰斯创意写作测试（TTCW）二元判据体系，构建了涵盖真实性回溯、内在自洽性、AI生成痕迹、叙事结构、人物心理、语言节奏、共情抵达、素读者现象学感知、原创性、编辑意图与叙事伦理的十一席独立评议空间。各席位在严格的物理隔离与互盲环境下并行审读，经由逐字引证机械核验（Verbatim quote verification）剔除伪证，并由确定性形式化规则合成质性带位（Qualitative Bands A/B/C）与可复现的多维导出评分。实证与形式化分析表明，该系统有效克服了传统数值量表的随机漂移，保留了文学审美的多元张力与不可通约性。
->
-> **【关键词】** 叙述学；文学批评；同行评议；互盲机制；TTCW；计算人文学；伪精确性批判
+| 宿主 | 最低验证版本 | 原生路径 | 说明 |
+|---|---:|---|---|
+| Codex CLI / App | 0.147.0 | Agent Plugin + `spawn_agent` | Agent Plugins 携带 skill；可选 `.codex/agents/*.toml` 增强安装 |
+| Claude Code | 2.1.63 | plugin `agents/*.md` + `Agent` | 当前术语是 `Agent`，不再以旧 `Task` 名称描述 |
+| Google Antigravity | CLI 1.1.12 | plugin custom agents + 多次 `invoke_subagent` | 可并发多个调用；不假设单次 array batch API |
 
-## 1. 绪论：连续量化刻度的认识论困境与伪精确性批判
+重要边界：开放 [Agent Plugins 1.0](https://agent-plugins.org/specification) 的可移植核心目前是 skills 与 MCP servers，不会跨宿主注册同一种 custom-agent 定义。因此本项目以 `core/` 共享运行语义，以 `adapters/` 生成宿主原生 Agent 定义。Codex 的 Agent Plugin manifest 与 Codex custom subagent 配置也是两层能力。
 
-在计算文学批评与文本质量评估实践中，向单篇回忆录章节或叙事散文赋予“7.5 分”式的连续标量评分，表面上维持了量化实证的客观表象，本质上却陷入了将多元且不可通约（Incommensurable）的美学判断强行压缩为单一维度的认识论幻觉。此类评分不仅在提示词微调或模型迭代时表现出显著的统计学漂移（Distributional drift），更抹杀了作品内部在形式结构、语调张力与情感诚实度之间的内在张力。
+## 安装
 
-放弃连续数值刻度并非主观的审美偏好，而是基于创造性写作测评实证研究的科学选择。本系统多项核心判据（席04/05/06/07/09 之 TW 系列）转译自 **TTCW**（Torrance Test of Creative Writing）理论框架。TTCW 在评估叙事文本创造力时，明确采用专业作家逐项判定的二元离散判据（Binary discrete criteria），而非连续谱系；其奠基性实验表明，大模型直接生成的连续标量打分与人类资深作家的质性批评之间存在结构性脱节。连续分数悄然消解了这种脱节；`lit-panel` 则选择在形式化体系中完整保留分歧与审美张力。
-
-本系统摒弃伪精确的直接量化假象，确立三项具有坚实实证约束的核心交付成果：
-
-- **离散判据（Criteria）**：验证文本中具体、可经验观察的叙事行为与审美特征是否成立；
-- **逐字证据（Evidence）**：为每一项判定提供经由机械核验的文本逐字引文（Quotes），查无实据之判定直接作废，杜绝幻觉污染证据链；
-- **质性带位（Qualitative Bands）**：提供 A/B/C 三档定性范畴归类，而非虚假的连续刻度。
-
-最终输出的评议报告整合了**质性带位（A/B/C）+ 逐字引证 + 分歧并列区 + 修订方案包 + 判据向量机械导出的多维评分视图**（v0.4.0+）。**评审席本身贯彻严格的零打分纪律**（契约定义见第 3.4 节）：各席位仅产出离散判定与文本引证，不生成亦无需感知任何分数；评分仅作为判据向量在确定性公开代数公式下的映射投影（见 `SKILL.md` §5.8），保证全流程透明与可复现。
-
-## 2. 理论框架与十一席叙事学同行评议机制
-
-本节阐述面向使用者的形式化评议机制。系统在运行时的权威执行规范为 `skills/lit-panel/SKILL.md`（多平台共用的唯一编排逻辑）；构建期设计规格见 `docs/DESIGN.md`，两者若存歧异以 `SKILL.md` 为准。
-
-### 2.1 十一席专业评审团架构与叙事学解构
-
-| 席位标识符 | 理论批评范畴与关注维度 | 激活条件 | 带位角色 / 权限属性 |
-|---|---|---|---|
-| **01** `lit-fidelity` | 来源忠实性：文本声称与历史素材回溯，五态事实标签（SUPPORTED/PERMISSIBLE_INFERENCE/UNSUPPORTED/CONTRADICTED/UNVERIFIABLE） | 提供 `--source` 素材时 | 忠实带唯一判定来源；拥有一票红线否决权 |
-| **02** `lit-continuity` | 文本内在自洽：叙事时间、人物身份、事实逻辑与规范一致性 | 全局总是激活 | 核心证据席；确证矛盾时拥有一票红线否决权 |
-| **03** `lit-slop` | 机器生成痕迹识别：基于多维模式库的语篇标注（轻度/重度 AI 味） | 全局总是激活 | 证据与特征提取席；无独立带位否决权 |
-| **04** `lit-structure` | 叙事学结构：热奈特时间变形、场景（Scene）与概述（Summary）配比、伏笔回应 | 全局总是激活 | 文学带核心裁决席位 |
-| **05** `lit-character` | 人物塑造与主体性：动机连续性、对话口吻去脸谱化、反情感粉饰 | 全局总是激活 | 文学带核心裁决席位 |
-| **06** `lit-prose` | 语言修辞与语篇节奏：叙述声音纯粹性、转承启合、词语具象度 | 全局总是激活 | 文学带核心裁决席位 |
-| **07** `lit-resonance` | 情感张力与共情抵达：概念化处理（Processed）vs 具身体验（Lived）、反虚假升华 | 全局总是激活 | 文学带核心裁决席位 |
-| **08** `lit-naive-reader` | 素读者现象学感知：读前无判据隐蔽测试，纯粹阅读体验与读后受众追踪 | 全局总是激活（严格两步法） | 参与终审合成仲裁，不进入基础判据向量 |
-| **09** `lit-originality` | 独创性与叙事套路：陌生化表达、个体生命体验色彩审读 | 全局总是激活 | 纯正向加分维度（不扣分、不封顶带位） |
-| **10** `lit-brief` | 编辑任务书依从性：戏剧意图传达、命题要素达成度 | 预设包含10 且提供 `--brief` | 不入基础带位；未达标项自动转化为修订建议 |
-| **11** `lit-ethics` | 叙事伦理关照：单方叙述侵害防范、隐私披露必要性、弱者主体尊严 | 默认激活（显式排除仍出警示） | 不入基础带位；伦理风险一律提交人工仲裁 |
-
-**预设评议分档**：`quick`=01,02,03,08；`standard`=01–09+11（默认配置，不含10；传入 `--brief` 时10席自动挂载）；`full`=01–11（若01/10因输入缺失未激活，报告头部记录 Warning 级提示）；`custom(<列表>)`=自定义席位集合，如 `--preset custom(01,03,08)`，传入未注册席位将直接阻断中止。
-
-### 2.2 三阶段循证评议协议（预检·互盲·核验·合成）
-
-```
-输入流：待评文本 + 可选 --source（原始文献/采访实录）/ --brief（编辑任务书）
-        │
-        ▼
-阶段零 · 机械语法与预检 —— 致命失败网关：文本截断/未收束判定（直接熔断中止）；
-                          元数据脱敏剥离、体裁识别、任务书硬约束前置检验
-        │
-        ▼
-阶段一 · 互盲多智能体并行审读 —— 十一席各自基于物理隔离上下文独立阅读，
-                                各自独立应用专属判据（席08严格遵循两步法：前测隐蔽→后测追问）
-        │
-        ▼
-阶段二 · 逐字引证机械核验 —— Tier 1–5 分层核验引擎（精确/归一化/跨度省略/模糊对齐/作废）；
-                          针对报告全部 quote 字段与来源素材执行机械复核，假引文强制熔断作废
-        │
-        ▼
-阶段三 · 形式化规则确定性合成 —— 红线警报/判据特征向量/质性带位/导出评分/
-                              分歧并列区/人工仲裁队列/修订方案包生成
-        │
-        ▼
-输出端：标准化学术评议报告 + 证据链明细侧车文件
-       （references/report-template.md 结构 + `<报告名>-details.md`）
-```
-
-### 2.3 质性带位分层与核心否决机制（Veto-based Banding）
-
-系统建立双轨独立带位：**忠实带（Fidelity Band，席01）**与**文学带（Literary Band，席04/05/06/07）**，两轨道平行定级，严禁机械均化。
-
-文学带判据建立三级形式化分层：
-- **核心否决判据（veto）**：各核心席位定义至多 2 条致命性基底指标（例如席07将“情感完全未被戏剧化呈现”与“情感被强行戏剧化至失真”作为对称极端否决项）。
-- **标准核心判据（core）**：各席位常规核心评价要素。
-- **扩展补充判据（extended）**：参考性边缘指标，计入判据向量但不影响带位门禁。
-
-带位形式化判定算法（优先级递减，首次命中即止）：
-1. 存在任一 veto 判据失效且判定严重度为 `severity=高` $\rightarrow$ 文学带封顶为 **C**（需重大重写）；
-2. 存在 veto 判据失效但 `severity=中/低` $\rightarrow$ 文学带最高评定为 **B**，且强制移交人工仲裁区；
-3. 无 veto 失效，但存在任一普通 core 判据失效 $\rightarrow$ 文学带最高评定为 **B**；
-4. 全量 veto 与 core 判据完全通过 $\rightarrow$ 授予 **A 候选资格**（须进一步比对 `anchors/band-a.md` 质感锚点）。
-
-**严重度（severity）在算法中充当四处形式化开关**：
-1. 忠实带门禁：仅高严重度 UNSUPPORTED 触发 C 级封顶；
-2. 红线区准入：高严重度事实冲突直通红线警报区；
-3. Veto 降级分支：区分 C 级熔断与 B 级人工复核；
-4. 修订优先级：决定修订包任务编排次序。
-
-### 2.4 独创性加分项（非惩罚性正向激励）
-
-自 v0.4.1 版本起，席09（`lit-originality`）退出惩罚性带位否决体系。该设计的学术伦理立场在于：**在回忆录与非虚构写作中，独创性属超额文学成就而非基础道德义务**。平实严谨的生命史记录不应因修辞未达先锋创新而遭受降级惩罚。席09 判定结果按如下规则作用于导出总分（见 `SKILL.md` §5.8）：
-- 积极独创判据（O2/O3/O5/O6）**全量通过**且零负向问题判定 $\rightarrow$ 总分 **+5**；
-- 积极判据通过数 $\ge 3$ 且零负向问题判定 $\rightarrow$ 总分 **+3**；
-- 其余任何情况 $\rightarrow$ **+0**（绝对零扣分机制）。问题判定作为修辞打磨建议移入修订包。
-
-### 2.5 素读者现象学体验与前测/后测报警器
-
-为防止纯粹判据规则沦为形式主义指标，系统引入席08（`lit-naive-reader`）现象学双盲报警机制。当且仅当文学带核心席位判据全部通过、文本进入 A 候选判定时，系统触发素读者后测核心设问：“你是否愿意将本篇作品真诚地推荐/讲述给他人？”（强制二值选择：愿意 / 不愿意）。
-
-- **样本规模 $N=1$**：若回答“不愿意”，系统**既不授予 A 级亦不直接降级**，而是将评议结论形式化表述为“**A候选（待人工确认——判据指标与读者现象学体验分歧）**”，强制挂起并转入人工仲裁队列。
-- **样本规模 $N>1$**：遵循多数决原则；票数均等时采取悲观保守策略触发仲裁，杜绝静默放行。
-
-### 2.6 互盲隔离与反位置偏差实验设计
-
-- **换序双评（仅 `/lit-compare`）**：在双文本对比实验中，各席位对文本对 (A,B) 与 (B,A) 分别进行独立评议。若且唯若两次均偏好同一文本方记录偏好；若偏好随呈现次序反转则标记为 **TIE**，用以严格剥离呈现位置偏差。
-- **物理级并发隔离（Google Antigravity / Claude Code）**：在 Google Antigravity 中，各席位通过 `invoke_subagent` 批量并发实例化；在 Claude Code 中通过独立 Task 分发。子代理间不存在共享上下文，在系统架构层面严格保证互盲同行评议。
-- **形式化状态重置（Codex 顺序路径）**：Codex 顺序执行时，主控智能体在切换席位间显式注入状态清除指令，模拟评议员间的遗忘纪律。
-- **异质家族跨模型评议**：严格要求生成模型与评议模型保持家族隔离（如 Claude 生成 $\rightarrow$ Codex / Gemini 评议），以破除同源潜在偏见共振。
-- **自由学术观点区**：各席位除判据表外保留 1–3 段非结构化专业学术直觉，配合素读者隐蔽前测，构成抵御指标异化（Goodhart's Law）的韧性防御。
-
-## 3. 实验环境与系统部署
-
-### 3.1 Google Antigravity 部署与原生并发调度
+先构建三端分发：
 
 ```bash
-# 推荐：使用一键安装脚本部署至全局环境 (~/.gemini/config/skills/lit-panel)
-./scripts/install-antigravity.sh
-
-# 或部署至当前工作区沙箱 (.agents/skills/lit-panel)
-./scripts/install-antigravity.sh --workspace
+python3 scripts/build_dist.py
 ```
 
-Antigravity 会自动完成技能发现。在会话中直接键入 `/lit-review <文本路径>` 即可触发并发评议。系统通过 `invoke_subagent` 批量唤起 11 席中档推理子代理（`Model: "flash"`），以只读沙箱实现零污染互盲评读，并通过 `send_message` 实现素读者两步法追问。
-
-### 3.2 Claude Code 插件部署与并行 Task 调度
-
-支持以下部署模式：
+Codex：
 
 ```bash
-# 方式一：本地技能目录符号链接部署（推荐开发跟踪）
-ln -s /path/to/lit-panel ~/.claude/skills/lit-panel
-# 或完整复制：cp -r /path/to/lit-panel ~/.claude/skills/lit-panel
-```
-
-```bash
-# 方式二：注册为本地插件市场持久化安装（仓库根目录已含 .claude-plugin/marketplace.json）
-claude plugin marketplace add /path/to/lit-panel
-claude plugin install lit-panel
-```
-
-终端标准验证回显：
-```
-✔ Successfully added marketplace: lit-panel (declared in user settings)
-✔ Successfully installed plugin: lit-panel@lit-panel (scope: user)
-```
-
-```bash
-# 方式三：单次命令行临时调试会话
-claude --plugin-dir /path/to/lit-panel
-```
-
-### 3.3 Codex 顺序评议与状态重置模拟
-
-```bash
-# 推荐：运行幂等安装脚本
 ./scripts/install-codex.sh
-
-# 或手动部署至 Codex 全局技能库
-cp -r skills/lit-panel ~/.agents/skills/lit-panel
+# 可选：同时把 11 个 Agent TOML 安装到当前项目
+./scripts/install-codex.sh --project-agents
 ```
 
-在全新 Codex 会话中按绝对路径挂载或自动发现执行。十一席评审将严格按顺序执行上下文遗忘模拟评议。
-
-## 4. 快速开始与调用范式
+Claude Code：
 
 ```bash
-# 单篇叙事评审：标准预设（01–09+11），并加载口述史料激活席01事实忠实度审查
-/lit-review 章节.md --source 访谈.md --preset standard
+./scripts/install-claude.sh
 ```
+
+Antigravity：
 
 ```bash
-# A/B 双本对盲评：两篇同题同源文本，全团换序双判消除位置偏差
-/lit-compare a.md b.md
+./scripts/install-antigravity.sh --cli
+./scripts/install-antigravity.sh --ide
+./scripts/install-antigravity.sh --workspace /path/to/project
 ```
 
-**学术报告结构规范**：标准化 `/lit-review` 报告遵循固定阅读序列（八大区块，标题不带编号）：**总评（评委会综合意见，2-3段） $\rightarrow$ 红线警报（若触发事实违背，居总分卡前） $\rightarrow$ 导出总分卡（总分/等级/核心判语） $\rightarrow$ 多维学术评分表（文学四维+原创加分+AI痕迹+读者体验+忠实度） $\rightarrow$ 评委分论（11 席真实口吻批评，嵌入原文逐字引证） $\rightarrow$ 问题与修订建议清单 $\rightarrow$ 需人工裁决区（分歧与待仲裁条目，严禁表格化） $\rightarrow$ 评议元数据归档**。全量判据明细与核验流水移入侧车文件 `<报告名>-details.md`。
+生成物分别在 `dist/codex`、`dist/claude`、`dist/antigravity`，每份都自带 persona、判据、schema、报告模板和运行脚本，不需要回到源码仓库取文件。
 
-**独立引证复核工具**：如需在会话外独立复核评审报告中的引证真实性，可运行随包分发的 Tier 1–5 分层核验脚本：`python3 <skill-dir>/scripts/verify-quotes.py quotes.json 章节.md --max-tier 5 [--source 访谈.md] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--include-tier]`（默认 `--max-tier 1` 保持精确包含，推荐阶段二显式指定 `--max-tier 5` 启用分层核验；Tier 4 仅生成非通过仲裁候选，不计入 Tier 5 作废；JSON 声明 `schema_version` `lit-panel.quote-verification/v1`）。
+## 运行模型
 
-## 5. 参数形式化定义
+```text
+prepare_run.py → run.json + 逐席互盲 packets
+  → 每席独立 subagent 并发评审（互盲）
+  → 席 08 lit-naive-reader 每位读者严格两步并记录上下文/首读哈希证明
+  → execution-receipt.json 证明原生 subagent、隔离、派发状态与降级情况
+  → seat-output.schema.json 校验
+  → verify_quotes.py 逐字核验，失败判据作废
+  → derive_report.py 核对输入摘要与全部回执，机械派生正式报告或诊断
+```
 
-| 命令行参数 | 参数域 / 格式 | 学术功能与语义说明 |
-|---|---|---|
-| `--preset` | `quick\|standard\|full\|custom(<列表>)` | 确定本轮评议席位集合，默认 `standard`。`custom(<列表>)` 必须传入 `registry.md` 中合法注册的席位编号。 |
-| `--source <素材路径>` | 文件或目录路径 | 挂载一手受访录音转写、史料文献等。激活席01忠实度审查；未提供时忠实度记 N/A 并输出学术免责声明。 |
-| `--brief <编辑意图路径>` | 文件路径 | 挂载创作任务书/戏剧大纲。激活席10依从性审查，并触发阶段零硬性篇幅与结构约束的前置机械核验。 |
-| `--stability` | 布尔开关（无值） | 触发一致性稳定性自检：静默复跑双轮独立评议，输出按席位分组的判据翻转率（Flip rate）矩阵。 |
-| `--readers=N` | 正整数，默认 `1` | 席08素读者的独立互盲样本量。多名读者独立完成两步法测验，评估受众反应的统计分布。 |
-| `--fast-compare` | 布尔开关，默认关闭 | 仅用于 `/lit-compare`。关闭换序双判以换取快速响应，报告头部强制声明位置偏差未防护。 |
+闭合入口 `verify_quotes.py` 与独立审计入口 `verify-quotes.py` 共用 Tier 1–5 引擎：Tier 1 精确、Tier 2 归一化及受片段长度约束的 Tier 3 省略跨度可以通过；Tier 4 模糊对齐只生成非通过的人工仲裁候选，Tier 5 负责硬作废。每条结构化回执都会记录实际 tier，Tier 4/5 绝不进入带位合成。
 
-## 6. 性能与计算开销评估
+`prepare_run.py` 接受 `--genre memoir|other`（默认 `memoir`）与 `--readers=N`（默认 1）。默认 `standard` 启用 01–09 与 11；`--source` 满足忠实席 01 的输入条件，`--brief` 会让 `standard` 自动并入编辑意图席 10，并让已包含 10 的 `full/custom(...)` 激活该席；`quick` 不因 brief 自动扩席。`quick` 的基础集合是 01、02、03、08，但回忆录会自动追加伦理席 11；它不覆盖文学核心席，因此正式文学带为 N/A。`full` 覆盖 01–11，但缺少 source/brief 会以覆盖缺口披露。`custom(...)` 若在回忆录中显式排除 11，也会形成覆盖警告。派生器会从 canonical 判据重建运行计划，并核对执行回执中的每个 packet SHA-256；ABSTAIN 或核心/否决判据的 NA 不能自动形成 A。
 
-实测计算耗时与资源消耗特征如下（受上下文长度、并发配额与模型推理档位影响）：
+席 03 的 A7 不是单章判据：只有 `--source` 指向递归包含至少两个文件的跨章节目录时才进入该席派发包；无 source、单文件 source 或仅含一个文件的目录均不激活 A7。
 
-- **Codex 顺序执行模式（中/高推理档）**：`quick` 预设约 10 分钟；`standard` 预设（10–11 席逐席推理）约 15–30 分钟，耗时随激活席位数呈线性增长 $O(N)$。
-- **Antigravity / Claude Code 并发模式**：`standard` 预设耗时取决于**最慢单席的最大执行时长**（约 5–8 分钟），总时间复杂度收敛至 $O(1)$ 常数并发级。
+互盲是硬闸门。若宿主不能建立真实独立 subagent 上下文，默认停止正式评审；用户显式允许时只能输出 `degraded=true` 的诊断，不能声称互盲。每位席 08 读者的第二步要么在第一步的同一 context 中 follow-up，要么在新 context 中携带密封首读原文；`execution-receipt.json` 必须记录 `step_2_mode`、两步 context id 与首读 SHA-256。
 
-**研究与使用建议**：日常文本迭代采用 `quick` 快速诊断；正式定稿与学术评审必须使用 `standard` 或 `full` 完整预设；对于 Codex 顺序环境，子代理推理强度推荐设为 `medium` 以兼顾结构化核验精度与时间开销。
+只有 `native_subagents=true`、`degraded=false`、派发和判据输出完整、席 08 证明完整、输入摘要与核验回执一致且 `coverage_gaps=[]` 时，`derive_report.py` 才生成 `formal=true` 的正式带位。任何降级、失败/非隔离派发、未披露缺件或引文作废都会 fail closed：结果为诊断，`bands.fidelity=null`、`bands.literary=null`、建议为“仅诊断”。这与正式运行因未覆盖某一维度而得到的 N/A 不同。
 
-## 7. 评议报告结构与多维评分导出机制
+## 闭合运行命令
 
-**评分导出形式化公理**：评审席自始至终**零打分**，各席输出契约仅包含离散布尔判定与逐字引证。阶段三合成层套用 `SKILL.md` §5.8 的确定性代数方程导出连续标量：
-$$\text{Base Score} = \frac{1}{4} \sum_{i \in \{04,05,06,07\}} S_i$$
-其中文学四维基准分均为 90 分，veto 判据违背按严重度封顶（高 $\le 45$，中/低 $\le 65$），普通 core 扣 12 分，extended 扣 5 分；叠加席03 AI痕迹修正项（$-3/\text{项}$，上限 $-10$）、席09 原创性加分项（$+3 \sim +5$，只加不减），并受席01 忠实带绝对封顶约束（忠实带 C 强制总分 $\le 45$ 且结论为重写）。
+```bash
+python3 core/lit-panel/scripts/prepare_run.py text.md \
+  --preset standard --genre memoir --readers 1 --output runs/example
 
-**需人工裁决区形式化规范**：本区块**严禁使用任何表格**，必须以纯文本叙述呈现多席学术分歧。以下六类事件强制触发人工裁决挂起：
-1. 全量 ABSTAIN 放弃判定；
-2. 席11（叙事伦理）的全部发现（伦理判断不设自动放行）；
-3. 阶段二机械核验失败作废的判定条目；
-4. 命中 veto 判据且 `severity=中/低` 的歧义项；
-5. veto 判据的 NA（不适用）标记；
-6. 素读者现象学报警器触发记录。
+# 宿主按 packets 派发真实 subagent，并写 execution-receipt.json；随后：
+python3 core/lit-panel/scripts/validate_execution_receipt.py runs/example/execution-receipt.json
+python3 core/lit-panel/scripts/verify_quotes.py runs/example/seat-outputs runs/example/text.txt \
+  --output runs/example/verification-receipt.json
+python3 core/lit-panel/scripts/derive_report.py \
+  runs/example/seat-outputs runs/example/verification-receipt.json \
+  runs/example/run.json runs/example/execution-receipt.json \
+  core/lit-panel/references/criteria --text runs/example/text.txt \
+  --output-json runs/example/derived-report.json \
+  --output-markdown runs/example/report.md
+```
 
-## 8. 自定义判据池与评议席位扩展准则
+提供来源时，`verify_quotes.py` 与 `derive_report.py` 都要传同一个 `--source <文件或目录>`；提供 brief 时，`derive_report.py` 还要传与阶段零一致的 `--brief <文件>`。`derive_report.py` 的五个位置参数依次是席位输出、引文回执、运行清单、执行回执和判据目录，不能沿用旧接口。`run.json` 中 source/brief 摘要非 null 而合成参数缺失或文件变化都会直接失败。
 
-- **判据语义守恒**：`references/criteria/*.md` 中的判据措辞可做润色，但严禁变更其布尔判定极性（`[通过]`/`[风险]`）。任何判据增删必须登记于 `references/criteria/CHANGELOG.md`。
-- **私有判据挂载（`criteria/99-private.md`）**：支持构建未公开的本地暗考题判据，防止生成模型针对公开测试集过拟合。
-- **扩席准入四大公理**：新增评议席位必须同时满足：
-  1. **独立批评视角**（非既有席位子集）；
-  2. **判据语义重叠度 $<20\%$**；
-  3. **专属证据形态**（如来源对照、两步法前测等）；
-  4. **不可替代的漏检兜底能力**。
+## 证据产物
 
-## 9. 局限性分析与有效性边界（诚实区）
+一轮闭合运行至少保留六类产物：
 
-本系统在方法论层面坦诚公开其能力边界：
+- `run.json`：输入摘要、体裁、读者数、席位和期望输出的冻结清单；
+- `execution-receipt.json`：宿主、原生隔离、packet 派发、席 08 两步与覆盖缺口证明；
+- 每席 `seat-output.schema.json` 对应的 JSON；
+- `verification-receipt.json`：逐条 quote 的命中/作废回执；
+- `derived-report.json`：冻结规则机械派生的带位、红线、修订和仲裁；
+- `report.md`：面向人的正式评审或明确标记的诊断投影。
 
-- **逐字核验保证存在性，而非诠释真实性**：阶段二机械核验仅能证明引文字符串真实存在于输入文本中，无法保证模型在 note 中对该引文的批评性推论绝对无误。
-- **公开判据的古德哈特定律风险（Goodhart's Law）**：当评价指标成为生成模型的针对性优化目标时，该指标将失去甄别效力。本系统依赖素读者双盲隐蔽测试与非结构化“自由观点”提供抗过拟合韧性。
-- **文本内伦理审读不替代场外知情同意**：席11 仅评估文本表征维度的伦理风险，无法核验现实中当事人的知情同意权。
-- **大模型审美的方差压缩而非终审替代**：多智能体互盲评议的核心价值在于消除主观随意性与单次随机方差，为专业编辑提供高置信度的证据链，绝非取代人类批评家的终极审美决断。
+项目禁止聚合数值总分、百分比和加权分。A/B/C/N/A 是正式运行中的质性带位，不是伪精确分数；作废判定不仅不能进入合成，还会使该轮失去正式闭合资格。
 
-### 9.1 实证有效性边界
+## 架构
 
-截至 v0.4.1 版本，系统各模块实证状态分类如下：
-- **已获真机完备验证**：多智能体互盲分发管道、Tier 1–5 逐字引文分层机械检索与伪证熔断机制（精确/归一化/跨度省略/模糊对齐/作废）、`quick`/`standard` 双预设装配、跨家族异质模型互评、忠实链全流程、Veto 三层带位降级算法、素读者两步法追问回收。
-- **待进一步实证检验**：极端 A 级文本触发的素读者“一票拦 A”锚点比对分支、席10 复杂任务书深度解析、多读者并发统计聚合（$N > 1$）、大规模生产环境下的极端长文本压力测试。
+```text
+core/lit-panel/                 # 唯一运行语义
+  SKILL.md
+  agents/
+  references/
+  schema/                       # run / execution / seat / verification / report
+  scripts/
+adapters/
+  codex/
+  claude/
+  antigravity/
+scripts/build_dist.py           # 生成三端 dist + 根兼容面
+dist/                           # 生成物
+```
 
-## 10. 数据隐私与学术伦理声明
+不要直接修改 `dist/`、根 `skills/lit-panel/` 或根 `agents/`；修改 `core/` / `adapters/` 后重新构建，并运行：
 
-- 系统内置的 A/B/C 带位基准锚点（`references/anchors/`）均为**纯人工合成文本**，绝不包含任何真实个体隐私。
-- 待评文本与一手资料仅在用户本地实例与配置的推理 API 之间安全流转，本系统不设任何形式的外发收集遥测。
-- 强烈建议**创作会话与评审会话严格分离**，并优先采用异质模型交叉审读，避免同质偏见掩盖文本缺陷。
+```bash
+python3 scripts/build_dist.py --check
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 scripts/release_check.py
+claude plugin validate --strict dist/claude
+agy plugin validate dist/antigravity
+```
 
-## 11. 方法论溯源与理论致谢
+## 隐私与发布
 
-本系统的判据哲学与方法论深受以下学术研究与开源项目的启发（详见 `docs/criteria-pool.md`）：
-- **TTCW (Torrance Test of Creative Writing)**：叙事节奏、场景比例、人物复杂度等核心 TW 判据的理论转译基石；
-- **ConStory**：一致性与事实冲突分类学来源；
-- **Measuring AI Slop & Antislop**：AI 语篇模式库与语境审读规范来源；
-- **EssayBench & HANNA**：叙事技法与素读者现象学测试设计框架；
-- **HealthBench & RaR**：可观察二元判据设计三规则与四要件体系；
-- **开源社区贡献**：中文 AI 味分析借鉴了 **shuorenhua** 与 **speak-human-tw** 的分类学思路。
+`tests/fixtures/` 与 `tests/runs/` 被永久排除，不能跟踪或打包真实传主材料。发布门禁会检查分发包中没有这些目录、没有机器本地绝对路径、三个 manifest 版本一致，并验证每端确实携带自包含运行资产。
 
-## 12. 开源协议
+详细规则见 [兼容性与降级](docs/COMPATIBILITY.md)、[架构说明](docs/ARCHITECTURE.md)、[三端黑盒矩阵](docs/BLACKBOX.md) 与 `core/lit-panel/SKILL.md`。
 
-本项目采用 MIT 开源许可证。完整条款详见 [`LICENSE`](./LICENSE)。
+## 官方依据
+
+- [Codex 0.147.0 release](https://github.com/openai/codex/releases/tag/rust-v0.147.0)
+- [Build plugins for Codex](https://developers.openai.com/plugins/build/plugins)
+- [Codex custom subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+- [Claude Code subagents](https://code.claude.com/docs/en/sub-agents)
+- [Antigravity CLI plugins](https://antigravity.google/docs/cli/plugins)
+- [Antigravity subagents](https://antigravity.google/docs/subagents)
+
+MIT License

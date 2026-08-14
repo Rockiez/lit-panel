@@ -130,19 +130,19 @@ def test_tier_2(reporter: TestReporter):
         content = file_path.read_text(encoding="utf-8")
         content_no_code = strip_code_blocks(content)
 
-        # 2.1 Heading Counts (1 H1, 11-12 H2, 9 H3 outside code blocks)
+        # 2.1 Heading Counts (1 H1, 11-12 H2, 9-10 H3 outside code blocks)
         h1_count = len(re.findall(r"^# ", content_no_code, re.MULTILINE))
         h2_count = len(re.findall(r"^## ", content_no_code, re.MULTILINE))
         h3_count = len(re.findall(r"^### ", content_no_code, re.MULTILINE))
 
         h1_ok = (h1_count == 1)
         h2_ok = (h2_count in (11, 12))
-        h3_ok = (h3_count == 9)
+        h3_ok = (h3_count in (9, 10))
 
         if h1_ok and h2_ok and h3_ok:
             reporter.log("Tier 2", "Heading Hierarchy Count", file_name, True, f"H1: {h1_count}, H2: {h2_count}, H3: {h3_count}")
         else:
-            reporter.log("Tier 2", "Heading Hierarchy Count", file_name, False, f"Expected H1=1, H2=11-12, H3=9; Found H1={h1_count}, H2={h2_count}, H3={h3_count}")
+            reporter.log("Tier 2", "Heading Hierarchy Count", file_name, False, f"Expected H1=1, H2=11-12, H3=9-10; Found H1={h1_count}, H2={h2_count}, H3={h3_count}")
 
         # 2.2 11 Seat Identifiers
         missing_seats = [seat for seat in SEAT_IDS if seat not in content]
@@ -158,12 +158,12 @@ def test_tier_2(reporter: TestReporter):
         else:
             reporter.log("Tier 2", "Parameter Reference Flags (6 Flags)", file_name, False, f"Missing parameter flags: {missing_flags}")
 
-        # 2.4 Total Code Block Fence Markers (16 fence lines = 8 code blocks)
+        # 2.4 Total Code Block Fence Markers (16-18 fence lines = 8-9 code blocks)
         fence_lines = len(re.findall(r"^```", content, re.MULTILINE))
-        if fence_lines == 16:
-            reporter.log("Tier 2", "Code Block Fence Markers (16 markers)", file_name, True)
+        if fence_lines in (16, 18):
+            reporter.log("Tier 2", "Code Block Fence Markers (16-18 markers)", file_name, True)
         else:
-            reporter.log("Tier 2", "Code Block Fence Markers (16 markers)", file_name, False, f"Expected 16 fence markers (8 blocks), found {fence_lines}")
+            reporter.log("Tier 2", "Code Block Fence Markers (16-18 markers)", file_name, False, f"Expected 16-18 fence markers (8-9 blocks), found {fence_lines}")
 
         # 2.5 Zero Placeholder Tokens
         found_placeholders = []

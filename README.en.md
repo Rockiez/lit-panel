@@ -2,7 +2,7 @@
 
 # lit-panel
 
-*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex skill.*
+*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex / Google Antigravity skill.*
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Version: 0.4.1](https://img.shields.io/badge/version-0.4.1-lightgrey.svg)
 
@@ -24,7 +24,7 @@ The final output of the report is **Bands (A/B/C) + Verbatim Citations + Disagre
 
 ## Core Mechanics
 
-This section is a streamlined overview for users. The authoritative runtime specification is `skills/lit-panel/SKILL.md` (the single orchestration logic shared across both distribution platforms); the build-time specification is in `docs/DESIGN.md`. In case of conflict, `SKILL.md` takes precedence.
+This section is a streamlined overview for users. The authoritative runtime specification is `skills/lit-panel/SKILL.md` (the single orchestration logic shared across platforms); the build-time specification is in `docs/DESIGN.md`. In case of conflict, `SKILL.md` takes precedence.
 
 ### Eleven-Seat Review Panel
 
@@ -121,12 +121,24 @@ This replaces the retired v0.1.1 design of "naive reader positive participation 
 ### Mutual Blindness & Anti-Bias Design
 
 - **Swap-order double review (only `/lit-compare`)**: In comparison mode, each seat evaluates preference between A and B twice — once presented as (A,B), once presented as (B,A). Preferring the same text twice → record that seat's preference; preference flipping with presentation order → record **TIE**. This design specifically detects position bias where a reviewer simply favors presentation order. Output provides distribution counts only, without converting into total scores or weighted rankings.
-- **Structural isolation in parallel path**: Under Claude Code, the eleven seats are parallel Task subagents with naturally isolated context, providing structural guarantee of mutual blindness.
-- **Explicit declaration of forgetting in sequential path**: Codex lacks native parallel capability. When the main session plays each seat sequentially, it must explicitly declare "This seat's review ends here; discarding all conclusions from this seat" before switching to the next seat. This uses explicit instructions to prompt the model to actively simulate forgetting — because in sequential execution, dialogue context is continuous. This statement is not a formality; it is the sole implementation of mutual blindness discipline in a non-parallel environment (it remains a simulation, details in "Known Boundaries and Risks" below).
+- **Structural isolation in parallel path (Antigravity / Claude Code)**: Under Google Antigravity, the eleven seats are dispatched concurrently as isolated Subagents via `invoke_subagent`; under Claude Code, they are dispatched via Task tools. Both provide structural guarantees of mutual blindness.
+- **Explicit declaration of forgetting in sequential path (Codex)**: Codex lacks native parallel capability. When the main session plays each seat sequentially, it must explicitly declare "This seat's review ends here; discarding all conclusions from this seat" before switching to the next seat. This uses explicit instructions to prompt the model to actively simulate forgetting — because in sequential execution, dialogue context is continuous. This statement is not a formality; it is the sole implementation of mutual blindness discipline in a non-parallel environment (it remains a simulation, details in "Known Boundaries and Risks" below).
 - **Cross-family review recommendation**: If generation and review use the same model / same session, the "Model & Session Disclosure" field in the report header must disclose this truthfully, recommending cross-family review (e.g. Claude generation → Codex review, or vice versa) to reduce single-source blind spots where the same set of latent biases writes and judges.
 - **Free opinion field & anti-Goodhart design**: Every seat output contract contains a "Free Opinion" section alongside its criteria table (1–3 paragraphs of professional intuition unconstrained by criteria). Together with Seat 08's "no criteria before reading" mechanism, these are the only two expression spaces outside the criteria table that cannot be bypassed by "cramming for the exam" — see Goodhart risk discussion below.
 
 ## Installation
+
+### Google Antigravity (Skill Mode)
+
+```bash
+# Recommended: Use installer script for global installation (~/.gemini/config/skills/lit-panel)
+./scripts/install-antigravity.sh
+
+# Or install to current project workspace (.agents/skills/lit-panel)
+./scripts/install-antigravity.sh --workspace
+```
+
+Antigravity automatically discovers the installed skill. Once installed, start a conversation with `/lit-review <text_path>` or a natural language review request. Antigravity will dispatch the 11 review seats concurrently via `invoke_subagent`, using lightweight and efficient intermediate reasoning models (`flash`) in physically isolated contexts, and interactively handle Seat 08's two-step follow-up via `send_message`.
 
 ### Claude Code (Plugin Mode)
 

@@ -2,7 +2,7 @@
 
 # lit-panel (Panel de evaluación literaria)
 
-*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex skill.*
+*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex / Google Antigravity skill.*
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Version: 0.4.1](https://img.shields.io/badge/version-0.4.1-lightgrey.svg)
 
@@ -24,7 +24,7 @@ El producto final del informe es **clasificación por banda (A/B/C) + citas text
 
 ## Mecanismo central
 
-Esta sección es una explicación simplificada del mecanismo orientada a los usuarios. La autoridad de ejecución en tiempo de ejecución completa es `skills/lit-panel/SKILL.md` (la única lógica de orquestación compartida por ambas plataformas de distribución); la especificación de diseño en fase de construcción se encuentra en `docs/DESIGN.md`. En caso de conflicto entre ambos, prevalecerá `SKILL.md`.
+Esta sección es una explicación simplificada del mecanismo orientada a los usuarios. La autoridad de ejecución en tiempo de ejecución completa es `skills/lit-panel/SKILL.md` (la única lógica de orquestación compartida por las diferentes plataformas de distribución); la especificación de diseño en fase de construcción se encuentra en `docs/DESIGN.md`. En caso de conflicto entre ambos, prevalecerá `SKILL.md`.
 
 ### Panel de evaluación de once escaños
 
@@ -120,12 +120,24 @@ Sustituye al diseño obsoleto de la versión v0.1.1 "Condición de participació
 ### Diseño a ciegas mutua y antisesgo
 
 - **Doble evaluación por inversión de orden (exclusivo de `/lit-compare`)**: En el modo de comparación, cada escaño realiza dos juicios de preferencia sobre A/B: una vez presentado en orden (A,B) y otra en orden invertido (B,A). Si ambas prefieren el mismo texto → se registra la preferencia de dicho escaño; si la preferencia se invierte con el orden de presentación → se registra **TIE** (empate). Este diseño está dedicado a detectar el sesgo de posición donde "la evaluación solo prefiere el orden de presentación". La salida solo proporciona el recuento de distribución, sin convertirse en una puntuación total o ranking ponderado.
-- **Aislamiento estructural de rutas paralelas**: Bajo Claude Code, los once escaños son subagentes Task paralelos cuyo contexto está aislado de forma natural; la evaluación a ciegas mutua es una garantía estructural.
-- **Declaración explícita de olvido en rutas secuenciales**: Codex no dispone de capacidad paralela. Cuando la sesión principal interpreta sucesivamente cada escaño, debe declarar explícitamente antes de cambiar al siguiente: "La revisión de este escaño termina aquí; descártense todas sus conclusiones". Se utiliza una instrucción clara para que el modelo simule activamente el olvido, ya que en la ejecución secuencial el contexto de conversación es continuo. Esta declaración no es una cortesía, sino la única forma de aplicar la disciplina a ciegas mutua en entornos sin paralelismo (sigue siendo una simulación; véanse los detalles en "Límites conocidos y riesgos").
+- **Aislamiento estructural de rutas paralelas (Antigravity / Claude Code)**: En Google Antigravity, los once escaños se despachan concurrentemente como subagentes independientes mediante `invoke_subagent`; en Claude Code se despachan mediante herramientas Task. Ambos proporcionan una garantía estructural de evaluación a ciegas mutua.
+- **Declaración explícita de olvido en rutas secuenciales (Codex)**: Codex no dispone de capacidad paralela. Cuando la sesión principal interpreta sucesivamente cada escaño, debe declarar explícitamente antes de cambiar al siguiente: "La revisión de este escaño termina aquí; descártense todas sus conclusiones". Se utiliza una instrucción clara para que el modelo simule activamente el olvido, ya que en la ejecución secuencial el contexto de conversación es continuo. Esta declaración no es una cortesía, sino la única forma de aplicar la disciplina a ciegas mutua en entornos sin paralelismo (sigue siendo una simulación; véanse los detalles en "Límites conocidos y riesgos").
 - **Recomendación de evaluación cruzada interfamiliar**: Si el generador y el evaluador utilizan el mismo modelo o la misma sesión, el campo "Divulgación de modelo y sesión" en el encabezado del informe debe indicarse con veracidad, y se recomienda una evaluación cruzada interfamiliar (por ejemplo, generación por Claude → evaluación por Codex, o viceversa) para reducir el punto ciego homólogo de que "el mismo conjunto de sesgos potenciales escriba y juzgue".
 - **Campo de opinión libre**: Cada escaño incluye en su contrato de salida, además de la tabla de criterios, una sección de "opinión libre" (1-3 párrafos de intuición profesional libre de las restricciones de los criterios). Junto con el mecanismo de "sin criterios antes de leer" del lector ingenuo, estas son las únicas dos áreas fuera de la tabla de criterios que no pueden eludirse memorizando preguntas (véase la discusión sobre el riesgo de Goodhart más adelante).
 
 ## Instalación
+
+### Google Antigravity (modo habilidad / skill)
+
+```bash
+# Recomendado: Usar script de instalación global (~/.gemini/config/skills/lit-panel)
+./scripts/install-antigravity.sh
+
+# O instalar en el espacio de trabajo del proyecto (.agents/skills/lit-panel)
+./scripts/install-antigravity.sh --workspace
+```
+
+Antigravity detectará automáticamente la habilidad instalada. Una vez completada la instalación, inicie una conversación con `/lit-review <ruta_texto>` o una solicitud en lenguaje natural. Antigravity despachará los 11 escaños de evaluación en paralelo mediante `invoke_subagent`, utilizando modelos ligeros y eficientes de razonamiento intermedio (`flash`) en contextos físicamente aislados, e interactuará con el seguimiento en dos pasos del Escaño 08 mediante `send_message`.
 
 ### Claude Code (modo complemento / plugin)
 

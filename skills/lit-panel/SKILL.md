@@ -5,7 +5,7 @@ description: 当需要评审、审稿或打分中文回忆录、叙事类文本�
 
 # lit-panel 编排逻辑
 
-本文件是 `lit-panel` 两个分发平台（Claude Code plugin / Codex `~/.agents/skills/lit-panel/`）共用的**唯一权威编排流程**，也是**分发副本内的唯一执行权威**；本文件把 DESIGN 第 3–7 节转成 orchestrator 可逐步执行的操作说明，不引入新的产品决策。`docs/DESIGN.md` 是构建期规格（不随包分发——已安装到 `~/.claude/skills/` 或 `~/.agents/skills/` 的副本目录中不包含该文件）。若发现本文件与 `docs/DESIGN.md` 不一致，属构建缺陷——执行时以本文件为准，并请向项目仓库报告；不要在运行时查找或依赖 `docs/DESIGN.md`。
+本文件是 `lit-panel` 三个分发平台（Claude Code plugin / Codex `~/.agents/skills/lit-panel/` / Google Antigravity `~/.gemini/config/skills/lit-panel/`）共用的**唯一权威编排流程**，也是**分发副本内的唯一执行权威**；本文件把 DESIGN 第 3–7 节转成 orchestrator 可逐步执行的操作说明，不引入新的产品决策。`docs/DESIGN.md` 是构建期规格（不随包分发——已安装到 `~/.claude/skills/` 或 `~/.agents/skills/` 的副本目录中不包含该文件）。若发现本文件与 `docs/DESIGN.md` 不一致，属构建缺陷——执行时以本文件为准，并请向项目仓库报告；不要在运行时查找或依赖 `docs/DESIGN.md`。
 
 入口：`/lit-review`（单文评审）与 `/lit-compare`（A/B 对比）两条命令都会加载本文件并按其执行。本文件不重复席位表——席位数据源是 `references/registry.md`，本文件只描述"如何用这张表"。
 
@@ -95,7 +95,17 @@ description: 当需要评审、审稿或打分中文回忆录、叙事类文本�
 
 **互盲铁律**：分发包中不得出现任何其他席位的结论、判定倾向或"期望带位"。每个席位是完全独立的上下文。
 
-### 3.3 两条执行路径
+### 3.3 三条执行路径
+
+**Google Antigravity 路径（原生并行 Subagent 批量并发）**：
+1. **批量并发派发**：对本轮激活的全部席位，orchestrator 调用 `invoke_subagent` 工具，在单个 tool call 中通过 `Subagents` 数组同批次并行发出各席位的派发请求。每个席位在物理隔离的独立上下文容器中运行，互盲天然成立。
+2. **模型档位与权限配置**：
+   - 评审席属结构化判据比对任务，各子代理统一指定 `Model: "flash"`（中档轻量推理模型，兼顾高速与低成本）；阶段三的复杂规则合成与报告组装由主 Agent 承担。
+   - 子代理仅作审读诊断，不开启写文件或子代理派发权限，保持只读安全沙箱。
+3. **素读者（席 08）两步制**：
+   - 第一步：只发送被评文本正文，不附带判据与输出契约，等待素读者回传第一步自然语言体验报告；
+   - 第二步：主 Agent 收到体验报告后，通过 `send_message` 工具向该素读者子代理发送 `08-naive-reader.md` 判据与追问题目（R 系列后测 + 三必答 + 传播意愿第四问），严格遵守读前无判据纪律。
+4. **事件驱动等待（Reactive Wakeup）**：主 Agent 并发派发后无需轮询，利用平台的异步唤醒机制等待全部席位回传判定，再统一进入阶段二机械核验。
 
 **Claude Code 路径（有并行 subagent 能力）**：对本轮激活的每个席位，使用 Task 工具派发 `agents/` 下对应的 subagent（`registry.md` 里的 agent name 一一对应），同批次并行发出全部席位的 Task 调用。互盲天然成立——各 subagent 上下文互相隔离。
 

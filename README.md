@@ -2,7 +2,7 @@
 
 # lit-panel（文学评审团）
 
-*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex skill.*
+*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex / Google Antigravity skill.*
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Version: 0.4.1](https://img.shields.io/badge/version-0.4.1-lightgrey.svg)
 
@@ -24,7 +24,7 @@ lit-panel 的应对方式是放弃刻度本身，只产出三样实的东西：
 
 ## 核心机制
 
-本节是面向使用者的精简版机制说明。完整的运行时权威是 `skills/lit-panel/SKILL.md`（两个分发平台共用的唯一编排逻辑）；构建期规格见 `docs/DESIGN.md`，两者冲突时以 `SKILL.md` 为准。
+本节是面向使用者的精简版机制说明。完整的运行时权威是 `skills/lit-panel/SKILL.md`（多平台共用的唯一编排逻辑）；构建期规格见 `docs/DESIGN.md`，两者冲突时以 `SKILL.md` 为准。
 
 ### 十一席评审团
 
@@ -120,12 +120,24 @@ v0.4.1 起，席09（原创性与陈套审读）退出上述 veto/core 三层带
 ### 互盲与反偏差设计
 
 - **换序双评（仅 `/lit-compare`）**：对比模式下每席对 A/B 做两次偏好判断——一次按 (A,B) 顺序呈现，一次按 (B,A) 换序呈现。两次都偏好同一篇 → 记录该席偏好；两次随呈现顺序反转 → 记 **TIE**。这是专门用来侦测"评审只是在偏好呈现顺序"这种位置偏差的设计，输出只给分布计数，不换算成总比分或加权名次。
-- **并行路径的结构性隔离**：Claude Code 下，十一席是并行 Task 子代理，上下文天然互相隔离，互盲是结构性保证。
-- **顺序路径的显式声明遗忘**：Codex 没有并行能力，主会话依次扮演每一席时，必须在换到下一席前显式声明"本席评审到此结束，丢弃本席全部结论"，用明确指令让模型主动模拟遗忘——因为顺序执行时对话上下文实际上是连续的。这条声明不是客套话，是互盲纪律在无并行环境下唯一的落地方式（仍是模拟，细节见下文"已知边界与风险"）。
+- **并行路径的结构性隔离（Antigravity / Claude Code）**：在 Google Antigravity 下，十一席通过 `invoke_subagent` 批量并发派发，天然拥有完全隔离的独立上下文；在 Claude Code 下通过 Task 工具派发。两者均提供物理级别的互盲保障。
+- **顺序路径的显式声明遗忘（Codex）**：Codex 没有并行能力，主会话依次扮演每一席时，必须在换到下一席前显式声明"本席评审到此结束，丢弃本席全部结论"，用明确指令让模型主动模拟遗忘——因为顺序执行时对话上下文实际上是连续的。这条声明不是客套话，是互盲纪律在无并行环境下唯一的落地方式（仍是模拟，细节见下文"已知边界与风险"）。
 - **跨家族评审建议**：若生成方与评审方用同一模型/同一会话，报告头部"模型与会话披露"字段须如实标注，并建议跨家族评审（如 Claude 生成 → Codex 评审，或反之）以降低"同一套潜在偏见既写又判"的同源盲区。
 - **自由观点字段**：每席输出契约里除判据表外还有一段"自由观点"（1-3段不受判据束缚的专业直觉）。连同素读者的"读前无判据"机制，这是判据表之外仅有的两处不能靠"背题"绕过的表达空间——详见下文 Goodhart 风险讨论。
 
 ## 安装
+
+### Google Antigravity（skill 形态）
+
+```bash
+# 推荐：使用安装脚本安装到全局 (~/.gemini/config/skills/lit-panel)
+./scripts/install-antigravity.sh
+
+# 或安装到当前工作区 (.agents/skills/lit-panel)
+./scripts/install-antigravity.sh --workspace
+```
+
+Antigravity 会自动发现已安装的技能。安装完成后，在会话中输入 `/lit-review <文本路径>` 或自然语言请求评审，Antigravity 会通过 `invoke_subagent` 批量并发派发 11 席评审员，各席位使用轻量高效的中档推理模型（`flash`）在物理隔离的上下文中独立审读，并通过 `send_message` 执行素读者两步追问。
 
 ### Claude Code（插件形态）
 

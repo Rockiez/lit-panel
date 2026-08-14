@@ -2,7 +2,7 @@
 
 # lit-panel (Comité de lecture littéraire)
 
-*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex skill.*
+*An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex / Google Antigravity skill.*
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Version: 0.4.1](https://img.shields.io/badge/version-0.4.1-lightgrey.svg)
 
@@ -24,7 +24,7 @@ Le produit final du rapport est composé d'une **classification par bande (A/B/C
 
 ## Mécanisme central
 
-Cette section présente une vue synthétique des mécanismes pour les utilisateurs. La référence d'exécution fait foi dans `skills/lit-panel/SKILL.md` (l'unique logique d'orchestration partagée par les deux plateformes de distribution) ; les spécifications de conception se trouvent dans `docs/DESIGN.md`. En cas de conflit, `SKILL.md` prévaut.
+Cette section présente une vue synthétique des mécanismes pour les utilisateurs. La référence d'exécution fait foi dans `skills/lit-panel/SKILL.md` (l'unique logique d'orchestration partagée par les différentes plateformes de distribution) ; les spécifications de conception se trouvent dans `docs/DESIGN.md`. En cas de conflit, `SKILL.md` prévaut.
 
 ### Comité de lecture à onze sièges
 
@@ -121,12 +121,24 @@ Ce mécanisme remplace la conception v0.1.1 abandonnée de la « participation p
 ### Conception à aveugle mutuel et anti-biais
 
 - **Double évaluation par inversion d'ordre (uniquement pour `/lit-compare`)** : En mode comparaison, chaque siège évalue la préférence entre A et B à deux reprises — une fois présentée sous l'ordre (A,B), une fois sous l'ordre (B,A). Préférer le même texte deux fois → enregistre la préférence du siège ; préférence inversée selon l'ordre de présentation → enregistre **TIE**. Cette conception est spécifiquement destinée à détecter le biais de position où un évaluateur favorise simplement l'ordre de présentation. La sortie ne fournit que des décomptes de distribution, sans les convertir en scores globaux ou classements pondérés.
-- **Isolation structurelle dans la voie parallèle** : Sous Claude Code, les onze sièges sont des sous-agents Task parallèles avec des contextes naturellement isolés, offrant une garantie structurelle d'aveugle mutuel.
-- **Déclaration explicite d'oubli dans la voie séquentielle** : Codex ne dispose pas de capacités parallèles natives. Lorsque la session principale incarne chaque siège de manière séquentielle, elle doit déclarer explicitement « L'examen de ce siège se termine ici ; abandon de toutes les conclusions de ce siège » avant de passer au siège suivant. Cela utilise des instructions explicites pour inciter le modèle à simuler l'oubli — car en exécution séquentielle, le contexte de dialogue est continu. Cette déclaration n'est pas une formalité ; c'est la seule mise en œuvre de la discipline d'aveugle mutuel dans un environnement non parallèle (cela reste une simulation, détails ci-dessous dans « Limites connues et risques »).
+- **Isolation structurelle dans la voie parallèle (Antigravity / Claude Code)** : Sous Google Antigravity, les onze sièges sont répartis en parallèle comme sous-agents via `invoke_subagent` avec des contextes strictement isolés ; sous Claude Code, ils sont distribués via l'outil Task. Les deux fournissent une garantie structurelle d'aveugle mutuel.
+- **Déclaration explicite d'oubli dans la voie séquentielle (Codex)** : Codex ne dispose pas de capacités parallèles natives. Lorsque la session principale incarne chaque siège de manière séquentielle, elle doit déclarer explicitement « L'examen de ce siège se termine ici ; abandon de toutes les conclusions de ce siège » avant de passer au siège suivant. Cela utilise des instructions explicites pour inciter le modèle à simuler l'oubli — car en exécution séquentielle, le contexte de dialogue est continu. Cette déclaration n'est pas une formalité ; c'est la seule mise en œuvre de la discipline d'aveugle mutuel dans un environnement non parallèle (cela reste une simulation, détails ci-dessous dans « Limites connues et risques »).
 - **Recommandation d'évaluation croisée multi-familles** : Si la génération et l'évaluation utilisent le même modèle ou la même session, le champ « Divulgation du modèle et de la session » dans l'en-tête du rapport doit le mentionner honnêtement, en recommandant une évaluation croisée multi-familles (par exemple génération par Claude → évaluation par Codex, ou inversement) pour réduire les angles morts d'auto-évaluation où le même ensemble de biais produit et juge le texte.
 - **Champ d'opinion libre & conception anti-Goodhart** : Chaque contrat de sortie de siège contient une section « Opinion libre » à côté de son tableau de critères (1 à 3 paragraphes d'intuition professionnelle non contraints par les critères). Avec le mécanisme « aucun critère avant lecture » du Siège 08, ce sont les deux seuls espaces d'expression en dehors du tableau de critères qui ne peuvent pas être contournés en « révisant pour l'examen » — voir la discussion sur le risque Goodhart ci-dessous.
 
 ## Installation
+
+### Google Antigravity (mode compétence / skill)
+
+```bash
+# Recommandé : Utiliser le script d'installation globale (~/.gemini/config/skills/lit-panel)
+./scripts/install-antigravity.sh
+
+# Ou installer dans l'espace de travail du projet (.agents/skills/lit-panel)
+./scripts/install-antigravity.sh --workspace
+```
+
+Antigravity découvrira automatiquement la compétence installée. Une fois l'installation terminée, démarrez une conversation avec `/lit-review <chemin_texte>` ou une demande d'évaluation en langage naturel. Antigravity déploiera les 11 sièges d'évaluation en parallèle via `invoke_subagent`, en utilisant des modèles de raisonnement intermédiaire légers et performants (`flash`) dans des contextes physiquement isolés, et traitera le suivi en deux étapes du Siège 08 via `send_message`.
 
 ### Claude Code (mode extension / plugin)
 

@@ -5,7 +5,8 @@
 ## 1. 目标与形态
 
 `lit-panel`（文学评审团）：对 AI 生成的中文回忆录/叙事文本做**多席并行互盲评审**的可分发插件。
-- **Claude Code**：以 plugin 形态安装（agents + commands + skills）。
+- **Google Antigravity**：通过 `scripts/install-antigravity.sh` 安装到全局 `~/.gemini/config/skills/lit-panel/` 或工作区 `.agents/skills/lit-panel/`，由 `invoke_subagent` 批量并发派发 11 席 Subagent 互盲评测，模型档位支持中档 `flash` 高效运行，通过 `send_message` 执行素读者两步追问。
+- **Claude Code**：以 plugin 形态安装（agents + commands + skills），通过 Task 工具派发并行子代理。
 - **Codex**：`skills/lit-panel/` 目录整体复制/软链到 `~/.agents/skills/lit-panel/` 即可用；无并行 subagent 时**逐席顺序执行，力求等价的顺序模拟**（互盲=每席独立上下文；并行路径下这是结构性保证，顺序路径下靠"显式声明丢弃上一席结论"模拟，不是真正的上下文隔离，细节见 README"已知边界与风险"）。
 - 核心立场：**刻度是幻觉，判据、证据和排序是实的**。评审席零打分，禁止评审席自行报出任何数值总分/小数评分；v0.4.0 起，报告在带位（A/B/C）+ 判据证据 + 分歧 + 修订包之上新增判据向量的机械导出评分——分数是判据向量的公开公式视图，不是评审席的判断，反对的是模型报伪精确数字，不是"出现数字"本身。
 
@@ -25,16 +26,19 @@ lit-panel/
 │   ├── originality-reviewer.md  ├── brief-adherence-reviewer.md
 │   └── ethics-reviewer.md
 ├── skills/lit-panel/
-│   ├── SKILL.md                 # 编排逻辑（两平台共用的权威流程）
+│   ├── SKILL.md                 # 编排逻辑（多平台共用的权威流程）
 │   └── references/
 │       ├── registry.md          # 席位注册表（orchestrator 数据源）
 │       ├── criteria/            # 01-fidelity.md … 11-ethics.md + CHANGELOG.md
 │       ├── slop-patterns-zh.md  # 中文 AI 味模式库
 │       ├── anchors/             # band-a.md / band-b.md / band-c.md（纯合成样例）
 │       └── report-template.md
-├── scripts/install-codex.sh
+├── scripts/
+│   ├── install-antigravity.sh   # Google Antigravity 安装脚本
+│   ├── install-codex.sh         # Codex 安装脚本
+│   └── verify-quotes.py         # 阶段二机械核验通用工具
 ├── README.md  /  LICENSE (MIT)
-└── tests/ (fixtures 与 runs 均已 gitignore，不随包分发；tests/README.md 说明测试策略，随包分发；scripts/verify-quotes.py 是不含真实引文的通用核验工具，随包分发)
+└── tests/ (fixtures 与 runs 均已 gitignore，不随包分发；tests/README.md 说明测试策略，随包分发)
 ```
 
 ## 3. 席位注册表（11 席）

@@ -3,4 +3,5 @@ tests/fixtures/
 # 测试运行产物
 tests/runs/
 .omc/
+.agents/
 .DS_Store

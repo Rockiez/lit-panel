@@ -1,3 +1,5 @@
+[简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)
+
 # lit-panel（文学评审团）
 
 *An eleven-seat, mutual-blind literary review panel for Chinese memoir / narrative text — a Claude Code / Codex skill.*

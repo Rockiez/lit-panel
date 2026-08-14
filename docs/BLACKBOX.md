@@ -4,9 +4,15 @@
 
 | 宿主 | 本机版本 | 安装/发现 | provider / 原生 subagent | 席 08 与闭合证据 | 当前结论 |
 |---|---:|---|---|---|---|
-| Codex CLI | 0.147.0 | `codex plugin marketplace add`、`codex plugin add lit-panel@lit-panel` 与实际 plugin cache skill 发现均通过 | provider-backed；实际启动 `/root/lit_structure_04` 与 `/root/lit_naive_reader_08` | 两席分包互不可见；08 在同一 subagent 先读正文再收判据；逐字引文核验通过。该 smoke 证明 provider/原生路径；新 `run.json` + `execution-receipt.json` 闭合链另由机械测试覆盖 | **provider path PASS**；不把旧 smoke 自动表述为新闭合链的生产回执 |
-| Claude Code | 2.1.195 | `claude plugin validate --strict dist/claude` 通过 | provider 返回 `Not logged in · Please run /login`，未出现 `Agent` tool use | 无 provider-backed 席 08 或执行回执，不能据 manifest 推断 | **BLOCKED**：完成 Claude 登录后重跑 |
-| Antigravity CLI | 1.1.13 | `agy plugin validate` 识别 1 skill + 11 agents；`agy plugin install` 通过 | provider 可响应，但测试会话未产生有效 `invoke_subagent` 回执；`--agent lit-structure` 也未进入目标 agent | 没有可关联的 context/两步/dispatch 证明 | **FAIL-CLOSED**：当前 CLI/provider 路由未通过 |
+| Codex CLI | 0.147.0 | 从仓库根 marketplace 安装 0.5.1 通过；实际 cache 只含 `dist/codex` 内容，并发现完整 skill | provider-backed；实际启动 `/root/lit_structure_04` 与 `/root/lit_naive_reader_08` | 两席分包互不可见；08 在同一 subagent 先读正文再收判据；逐字引文核验通过。该 smoke 证明 provider/原生路径；新 `run.json` + `execution-receipt.json` 闭合链另由机械测试覆盖 | **provider path PASS**；不把旧 smoke 自动表述为新闭合链的生产回执 |
+| Claude Code | 2.1.195 | 从仓库根 marketplace 安装 0.5.1 通过；实际 cache 只含 `dist/claude` 内容；strict validate 通过 | provider 返回 `Not logged in · Please run /login`，未出现 `Agent` tool use | 无 provider-backed 席 08 或执行回执，不能据 manifest 推断 | **BLOCKED**：完成 Claude 登录后重跑 |
+| Antigravity CLI | 1.1.13 | GitHub tree URL 与本地 `dist/antigravity` 安装均通过，识别 1 skill + 11 agents | provider 可响应，但测试会话未产生有效 `invoke_subagent` 回执；`--agent lit-structure` 也未进入目标 agent | 没有可关联的 context/两步/dispatch 证明 | **FAIL-CLOSED**：当前 CLI/provider 路由未通过 |
+
+## 安装隔离回执
+
+Codex 使用隔离 `CODEX_HOME` 从仓库根目录注册 marketplace，安装结果为 `lit-panel@lit-panel 0.5.1`，source 精确解析到 `dist/codex`。Claude Code 使用隔离 `CLAUDE_CONFIG_DIR` 从同一仓库根目录注册并安装 0.5.1。两端实际 cache 均包含 `skills/lit-panel/SKILL.md`，且不存在 `scripts/build_dist.py`、`tests/` 或嵌套 `dist/`。
+
+Antigravity 使用 `agy plugin install https://github.com/Rockiez/lit-panel/tree/main/dist/antigravity` 的远程路径安装成功；另以隔离 HOME 安装本地 `dist/antigravity`，最终目录只含该宿主的 `plugin.json`、11 个 agents、skill 与 README。这一层证明安装路由和包隔离，不替代 provider-backed `invoke_subagent` 回执。
 
 ## Codex provider-backed 回执
 

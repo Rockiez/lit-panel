@@ -13,6 +13,14 @@
 
 Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与 skill 发现路径，不是“只有复制 skill 的兼容方案”。Agent Plugin manifest 本身不注册 `.codex/agents/*.toml`；这些 TOML 是可选增强，而真实隔离仍由原生 `spawn_agent` 提供。
 
+## 安装与发布层
+
+仓库根目录是远程入口，不是可安装内容本身：`.agents/plugins/marketplace.json` 把 Codex 路由到 `dist/codex`，`.claude-plugin/marketplace.json` 把 Claude Code 路由到 `dist/claude`，Antigravity 使用 GitHub tree URL 直接选择 `dist/antigravity`。因此原生管理器只缓存对应宿主的自包含产物，不会把 `core/`、`tests/` 或其他宿主分发一起安装。
+
+每个分发包内的 marketplace 又必须保持 `./` 自相对，才能作为 release archive 或本地目录独立注册。`scripts/build_dist.py` 负责从根 catalog 派生这两个自相对 catalog；根 catalog 是远程路由的 source of truth，不再由 `dist/claude` 反向覆盖。
+
+`dist/` 是经过门禁并提交的安装输入。用户安装不运行构建器；本地脚本默认消费已提交产物，只有维护者显式传 `--rebuild` 才从 `core/` 与 `adapters/` 重新生成。Python 3.10+ 仍是逐字核验与报告派生的运行时依赖，但不再是宿主注册插件前的手工构建步骤。
+
 ## 闭合数据流
 
 ```text

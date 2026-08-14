@@ -9,6 +9,7 @@ DIST_ROOT="${REPO_ROOT}/dist/codex"
 LIT_PANEL_VERSION="$(tr -d '[:space:]' < "${REPO_ROOT}/VERSION")"
 PROJECT_AGENTS=""
 FORCE=false
+REBUILD=false
 
 for arg in "$@"; do
   case "${arg}" in
@@ -18,10 +19,14 @@ for arg in "$@"; do
     -y|--force)
       FORCE=true
       ;;
+    --rebuild)
+      REBUILD=true
+      ;;
     -h|--help)
-      echo "用法: $0 [--project-agents] [-y|--force]"
-      echo "  默认通过本地 marketplace 安装 Agent Plugin。"
+      echo "用法: $0 [--project-agents] [--rebuild] [-y|--force]"
+      echo "  默认从仓库已提交的 dist/codex 安装，不执行构建。"
       echo "  --project-agents 另外把 11 个生成的 Agent TOML 安装到当前项目。"
+      echo "  --rebuild        维护者选项：安装前从 core/adapters 重新生成 dist。"
       exit 0
       ;;
     *)
@@ -49,10 +54,12 @@ then
   exit 1
 fi
 
-python3 "${REPO_ROOT}/scripts/build_dist.py"
+if [ "${REBUILD}" = true ]; then
+  python3 "${REPO_ROOT}/scripts/build_dist.py"
+fi
 for verifier in verify_quotes.py verify-quotes.py; do
   if [ ! -f "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" ]; then
-    echo "错误：Codex 分发缺少阶段二核验器 ${verifier}。" >&2
+    echo "错误：Codex 分发缺少阶段二核验器 ${verifier}；请使用完整 release checkout，维护者可加 --rebuild。" >&2
     exit 1
   fi
   python3 "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" --help >/dev/null

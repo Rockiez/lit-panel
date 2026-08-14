@@ -23,6 +23,14 @@ def load_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def split_agent(path: Path) -> tuple[dict[str, str], str]:
     content = path.read_text(encoding="utf-8")
     if not content.startswith("---\n"):
@@ -90,9 +98,9 @@ def build_into(destination: Path) -> None:
     )
     shutil.copy2(ROOT / "plugin.json", codex / "plugin.json")
     shutil.copy2(ADAPTERS / "codex" / "README.md", codex / "README.md")
-    shutil.copytree(
-        ROOT / ".agents" / "plugins", codex / ".agents" / "plugins", dirs_exist_ok=True
-    )
+    codex_marketplace = load_json(ROOT / ".agents" / "plugins" / "marketplace.json")
+    codex_marketplace["plugins"][0]["source"]["path"] = "./"
+    write_json(codex / ".agents" / "plugins" / "marketplace.json", codex_marketplace)
     generate_codex_agents(codex / ".codex" / "agents")
     make_executable_scripts(codex / "skills" / "lit-panel")
 
@@ -103,7 +111,12 @@ def build_into(destination: Path) -> None:
     shutil.copytree(
         ADAPTERS / "claude" / ".claude-plugin", claude / ".claude-plugin", dirs_exist_ok=True
     )
-    shutil.copy2(ROOT / ".claude-plugin" / "marketplace.json", claude / ".claude-plugin" / "marketplace.json")
+    claude_marketplace = load_json(ROOT / ".claude-plugin" / "marketplace.json")
+    claude_marketplace["plugins"][0]["source"] = "./"
+    write_json(
+        claude / ".claude-plugin" / "marketplace.json",
+        claude_marketplace,
+    )
     make_executable_scripts(claude / "skills" / "lit-panel")
 
     antigravity = destination / "antigravity"
@@ -183,10 +196,14 @@ def sync_root_compatibility() -> None:
     for source, destination in (
         (CORE, ROOT / "skills" / "lit-panel"),
         (CORE / "agents", ROOT / "agents"),
-        (DIST / "claude" / ".claude-plugin", ROOT / ".claude-plugin"),
         (ADAPTERS / "codex" / ".codex-plugin", ROOT / ".codex-plugin"),
     ):
         sync_tree(source, destination)
+    (ROOT / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        ADAPTERS / "claude" / ".claude-plugin" / "plugin.json",
+        ROOT / ".claude-plugin" / "plugin.json",
+    )
     make_executable_scripts(ROOT / "skills" / "lit-panel")
 
 
@@ -224,10 +241,16 @@ def main() -> int:
                 compatibility_pairs = (
                     (CORE, ROOT / "skills" / "lit-panel"),
                     (CORE / "agents", ROOT / "agents"),
-                    (candidate / "claude" / ".claude-plugin", ROOT / ".claude-plugin"),
                     (ADAPTERS / "codex" / ".codex-plugin", ROOT / ".codex-plugin"),
                 )
                 if any(not destination.exists() or not same_tree(source, destination) for source, destination in compatibility_pairs):
+                    print("ROOT COMPATIBILITY COPY OUT OF DATE: 请运行 scripts/build_dist.py", file=sys.stderr)
+                    return 1
+                claude_source = ADAPTERS / "claude" / ".claude-plugin" / "plugin.json"
+                claude_destination = ROOT / ".claude-plugin" / "plugin.json"
+                if not claude_destination.is_file() or not filecmp.cmp(
+                    claude_source, claude_destination, shallow=False
+                ):
                     print("ROOT COMPATIBILITY COPY OUT OF DATE: 请运行 scripts/build_dist.py", file=sys.stderr)
                     return 1
                 print("DIST CURRENT: codex, claude, antigravity")

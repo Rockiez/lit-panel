@@ -38,6 +38,32 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(len(list((ROOT / "dist/claude/agents").glob("*.md"))), 11)
         self.assertEqual(len(list((ROOT / "dist/antigravity/agents").glob("*.md"))), 11)
 
+    def test_repository_marketplaces_route_to_host_specific_distributions(self) -> None:
+        codex = json.loads(
+            (ROOT / ".agents/plugins/marketplace.json").read_text(encoding="utf-8")
+        )
+        claude = json.loads(
+            (ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(codex["plugins"][0]["source"]["path"], "./dist/codex")
+        self.assertEqual(claude["plugins"][0]["source"], "./dist/claude")
+
+    def test_distribution_marketplaces_are_self_relative(self) -> None:
+        codex = json.loads(
+            (ROOT / "dist/codex/.agents/plugins/marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        claude = json.loads(
+            (ROOT / "dist/claude/.claude-plugin/marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual(codex["plugins"][0]["source"]["path"], "./")
+        self.assertEqual(claude["plugins"][0]["source"], "./")
+
 
 if __name__ == "__main__":
     unittest.main()

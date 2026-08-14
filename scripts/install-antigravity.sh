@@ -9,6 +9,7 @@ DIST_ROOT="${REPO_ROOT}/dist/antigravity"
 MODE="cli"
 WORKSPACE_ROOT="${PWD}"
 FORCE=false
+REBUILD=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -28,8 +29,13 @@ while [ "$#" -gt 0 ]; do
     -y|--force)
       FORCE=true
       ;;
+    --rebuild)
+      REBUILD=true
+      ;;
     -h|--help)
-      echo "用法: $0 [--cli|--ide|--workspace [path]] [-y|--force]"
+      echo "用法: $0 [--cli|--ide|--workspace [path]] [--rebuild] [-y|--force]"
+      echo "  默认从仓库已提交的 dist/antigravity 安装，不执行构建。"
+      echo "  --rebuild  维护者选项：安装前从 core/adapters 重新生成 dist。"
       exit 0
       ;;
     *)
@@ -59,10 +65,12 @@ PY
   fi
 fi
 
-python3 "${REPO_ROOT}/scripts/build_dist.py"
+if [ "${REBUILD}" = true ]; then
+  python3 "${REPO_ROOT}/scripts/build_dist.py"
+fi
 for verifier in verify_quotes.py verify-quotes.py; do
   if [ ! -f "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" ]; then
-    echo "错误：Antigravity 分发缺少阶段二核验器 ${verifier}。" >&2
+    echo "错误：Antigravity 分发缺少阶段二核验器 ${verifier}；请使用完整 release checkout，维护者可加 --rebuild。" >&2
     exit 1
   fi
   python3 "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" --help >/dev/null
@@ -81,6 +89,38 @@ else
   DEST="${HOME}/.gemini/config/plugins/lit-panel"
 fi
 
+same_plugin_tree() {
+  python3 - "$1" "$2" <<'PY'
+import filecmp
+import stat
+import sys
+from pathlib import Path
+
+
+def same_tree(left: Path, right: Path) -> bool:
+    if not left.is_dir() or not right.is_dir():
+        return False
+    comparison = filecmp.dircmp(left, right)
+    if comparison.left_only or comparison.right_only or comparison.funny_files:
+        return False
+    for name in comparison.common_files:
+        left_file = left / name
+        right_file = right / name
+        if not filecmp.cmp(left_file, right_file, shallow=False):
+            return False
+        if stat.S_IMODE(left_file.stat().st_mode) != stat.S_IMODE(right_file.stat().st_mode):
+            return False
+    return all(same_tree(left / name, right / name) for name in comparison.common_dirs)
+
+
+raise SystemExit(0 if same_tree(Path(sys.argv[1]), Path(sys.argv[2])) else 1)
+PY
+}
+
+if [ -d "${DEST}" ] && same_plugin_tree "${DIST_ROOT}" "${DEST}"; then
+  echo "Antigravity ${MODE} plugin 已是当前分发；跳过重复安装：${DEST}"
+  exit 0
+fi
 if [ -e "${DEST}" ] && [ "${FORCE}" != true ]; then
   echo "错误：目标已存在：${DEST}。确认覆盖后用 --force。" >&2
   exit 1

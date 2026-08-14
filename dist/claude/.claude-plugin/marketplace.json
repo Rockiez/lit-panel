@@ -4,8 +4,8 @@
     "name": "Anamnese"
   },
   "metadata": {
-    "description": "lit-panel 自托管插件市场——指向本仓库自身，供 `claude plugin marketplace add` 注册后再 `claude plugin install lit-panel` 安装",
-    "version": "0.5.0"
+    "description": "lit-panel 自托管插件市场——从仓库内已提交的 Claude 专用分发包安装，不要求用户本地构建",
+    "version": "0.5.1"
   },
   "plugins": [
     {

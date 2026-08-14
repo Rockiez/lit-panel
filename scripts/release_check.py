@@ -92,6 +92,30 @@ def check_versions() -> None:
             fail(f"版本不一致: {path}")
 
 
+def check_marketplace_routing() -> None:
+    root_codex = read_json(ROOT / ".agents" / "plugins" / "marketplace.json")
+    root_claude = read_json(ROOT / ".claude-plugin" / "marketplace.json")
+    dist_codex = read_json(DIST / "codex" / ".agents" / "plugins" / "marketplace.json")
+    dist_claude = read_json(DIST / "claude" / ".claude-plugin" / "marketplace.json")
+
+    def source(manifest: dict[str, object], label: str) -> object:
+        plugins = manifest.get("plugins")
+        if not isinstance(plugins, list) or not plugins or not isinstance(plugins[0], dict):
+            fail(f"{label} marketplace 缺少 plugins[0]")
+        return plugins[0].get("source")
+
+    root_codex_source = source(root_codex, "根 Codex")
+    dist_codex_source = source(dist_codex, "Codex 分发")
+    if not isinstance(root_codex_source, dict) or root_codex_source.get("path") != "./dist/codex":
+        fail("根 Codex marketplace 必须只路由到 dist/codex")
+    if source(root_claude, "根 Claude") != "./dist/claude":
+        fail("根 Claude marketplace 必须只路由到 dist/claude")
+    if not isinstance(dist_codex_source, dict) or dist_codex_source.get("path") != "./":
+        fail("Codex 分发内 marketplace 必须保持 ./ 自相对")
+    if source(dist_claude, "Claude 分发") != "./":
+        fail("Claude 分发内 marketplace 必须保持 ./ 自相对")
+
+
 def check_self_contained() -> None:
     required = (
         "SKILL.md",
@@ -154,12 +178,13 @@ def main() -> int:
         check_generated_copies()
         check_agent_plugin_manifest()
         check_versions()
+        check_marketplace_routing()
         check_self_contained()
         check_privacy()
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
         print(f"RELEASE CHECK FAILED: {exc}", file=sys.stderr)
         return 1
-    print("RELEASE CHECK PASSED: manifests, versions, self-contained assets, privacy")
+    print("RELEASE CHECK PASSED: manifests, versions, marketplace routing, self-contained assets, privacy")
     return 0
 
 

@@ -7,6 +7,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_ROOT="${REPO_ROOT}/dist/claude"
 LIT_PANEL_VERSION="$(tr -d '[:space:]' < "${REPO_ROOT}/VERSION")"
+REBUILD=false
+
+for arg in "$@"; do
+  case "${arg}" in
+    --rebuild)
+      REBUILD=true
+      ;;
+    -h|--help)
+      echo "用法: $0 [--rebuild]"
+      echo "  默认从仓库已提交的 dist/claude 安装，不执行构建。"
+      echo "  --rebuild  维护者选项：安装前从 core/adapters 重新生成 dist。"
+      exit 0
+      ;;
+    *)
+      echo "未知参数: ${arg}" >&2
+      exit 1
+      ;;
+  esac
+done
 
 if ! command -v claude >/dev/null 2>&1; then
   echo "错误：未找到 claude CLI。" >&2
@@ -26,10 +45,12 @@ then
   exit 1
 fi
 
-python3 "${REPO_ROOT}/scripts/build_dist.py"
+if [ "${REBUILD}" = true ]; then
+  python3 "${REPO_ROOT}/scripts/build_dist.py"
+fi
 for verifier in verify_quotes.py verify-quotes.py; do
   if [ ! -f "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" ]; then
-    echo "错误：Claude 分发缺少阶段二核验器 ${verifier}。" >&2
+    echo "错误：Claude 分发缺少阶段二核验器 ${verifier}；请使用完整 release checkout，维护者可加 --rebuild。" >&2
     exit 1
   fi
   python3 "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" --help >/dev/null

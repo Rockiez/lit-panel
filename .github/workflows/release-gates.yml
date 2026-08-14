@@ -18,20 +18,43 @@ jobs:
         with:
           node-version: "22"
       - name: Install Codex and Claude Code CLIs
-        run: npm install -g @openai/codex@0.147.0 @anthropic-ai/claude-code
+        run: npm install -g @openai/codex@0.147.0 @anthropic-ai/claude-code@2.1.195
       - name: Install Antigravity CLI from the official native installer
         run: |
           curl -fsSL https://antigravity.google/cli/install.sh | bash
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
       - name: Validate and install Codex Agent Plugin
         run: |
-          codex plugin marketplace add "${GITHUB_WORKSPACE}/dist/codex"
-          codex plugin add lit-panel@lit-panel --json
+          codex plugin marketplace add "${GITHUB_WORKSPACE}"
+          install_json="$(codex plugin add lit-panel@lit-panel --json)"
+          printf '%s\n' "${install_json}"
           codex plugin list --json | python3 -c 'import json,pathlib,sys; data=json.load(sys.stdin); expected=pathlib.Path("VERSION").read_text().strip(); raise SystemExit(0 if any(x.get("pluginId") == "lit-panel@lit-panel" and x.get("version") == expected for x in data.get("installed", [])) else 1)'
-      - name: Validate Claude Code plugin manifest
-        run: claude plugin validate --strict dist/claude
-      - name: Validate Antigravity plugin manifest
-        run: agy plugin validate dist/antigravity
+          plugin_root="$(printf '%s' "${install_json}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["installedPath"])')"
+          test -f "${plugin_root}/skills/lit-panel/SKILL.md"
+          test ! -e "${plugin_root}/scripts/build_dist.py"
+          test ! -e "${plugin_root}/tests"
+          test ! -e "${plugin_root}/dist"
+      - name: Validate and install Claude Code plugin
+        run: |
+          claude plugin validate --strict dist/claude
+          claude plugin marketplace add "${GITHUB_WORKSPACE}"
+          claude plugin install lit-panel@lit-panel
+          claude plugin list --json | python3 -c 'import json,pathlib,sys; expected=pathlib.Path("VERSION").read_text().strip(); raise SystemExit(0 if any(x.get("id") == "lit-panel@lit-panel" and x.get("version") == expected for x in json.load(sys.stdin)) else 1)'
+          plugin_root="$(claude plugin list --json | python3 -c 'import json,sys; print(next(x["installPath"] for x in json.load(sys.stdin) if x["id"] == "lit-panel@lit-panel"))')"
+          test -f "${plugin_root}/skills/lit-panel/SKILL.md"
+          test ! -e "${plugin_root}/scripts/build_dist.py"
+          test ! -e "${plugin_root}/tests"
+          test ! -e "${plugin_root}/dist"
+      - name: Validate and install Antigravity plugin
+        run: |
+          agy plugin validate dist/antigravity
+          agy plugin install dist/antigravity
+          agy plugin list --json | python3 -c 'import json,sys; raise SystemExit(0 if any(x.get("name") == "lit-panel" and set(x.get("components", [])) == {"skills", "agents"} for x in json.load(sys.stdin)["imports"]) else 1)'
+          plugin_root="${HOME}/.gemini/config/plugins/lit-panel"
+          test -f "${plugin_root}/skills/lit-panel/SKILL.md"
+          test ! -e "${plugin_root}/scripts/build_dist.py"
+          test ! -e "${plugin_root}/tests"
+          test ! -e "${plugin_root}/dist"
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
       - run: python3 tests/validate_readme.py
       - name: Assert tests did not rewrite committed generated artifacts

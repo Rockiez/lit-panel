@@ -1,6 +1,6 @@
 [简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)
 
-# lit-panel 0.5.0
+# lit-panel 0.5.1
 
 面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废与质性 A/B/C/N/A 带位派生。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
 
@@ -16,35 +16,33 @@
 
 ## 安装
 
-先构建三端分发：
-
-```bash
-python3 scripts/build_dist.py
-```
+日常安装不需要 clone 仓库，也不需要先运行 Python 构建器。宿主的原生插件管理器会直接读取仓库中已提交、可独立安装的对应分发包。
 
 Codex：
 
 ```bash
-./scripts/install-codex.sh
-# 可选：同时把 11 个 Agent TOML 安装到当前项目
-./scripts/install-codex.sh --project-agents
+codex plugin marketplace add Rockiez/lit-panel
+codex plugin add lit-panel@lit-panel
 ```
 
 Claude Code：
 
 ```bash
-./scripts/install-claude.sh
+claude plugin marketplace add Rockiez/lit-panel
+claude plugin install lit-panel@lit-panel
 ```
 
 Antigravity：
 
 ```bash
-./scripts/install-antigravity.sh --cli
-./scripts/install-antigravity.sh --ide
-./scripts/install-antigravity.sh --workspace /path/to/project
+agy plugin install https://github.com/Rockiez/lit-panel/tree/main/dist/antigravity
 ```
 
-生成物分别在 `dist/codex`、`dist/claude`、`dist/antigravity`，每份都自带 persona、判据、schema、报告模板和运行脚本，不需要回到源码仓库取文件。
+安装后请开启新的 Codex task、Claude Code session 或 Antigravity session，让宿主重新发现插件。
+
+安装本身不执行 `scripts/build_dist.py`。插件的逐字核验和报告派生仍以 Python 3.10+ 作为运行时，这是评审执行依赖，不是安装前置步骤。`dist/codex`、`dist/claude`、`dist/antigravity` 每份都自带 persona、判据、schema、报告模板和运行脚本。
+
+只有本地/离线安装或开发时才需要 checkout。此时 `./scripts/install-codex.sh`、`./scripts/install-claude.sh` 和 `./scripts/install-antigravity.sh` 默认消费已提交的 `dist`；维护者修改 `core/` / `adapters/` 后可显式加 `--rebuild`。Codex 的可选项目 Agent TOML 仍通过 `./scripts/install-codex.sh --project-agents` 安装。
 
 ## 运行模型
 

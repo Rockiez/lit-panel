@@ -2,7 +2,7 @@
 
 # lit-panel
 
-Version 0.5.0 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive a qualitative A/B/C/N/A band. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
+Version 0.5.1 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive a qualitative A/B/C/N/A band. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
 
 ## Support matrix
 
@@ -16,35 +16,33 @@ The portable core of the open [Agent Plugins 1.0 specification](https://agent-pl
 
 ## Installation
 
-Build all three distributions first:
-
-```bash
-python3 scripts/build_dist.py
-```
+Normal installation does not require cloning the repository or running the Python builder first. Each host's native plugin manager reads its committed, self-contained distribution directly from the repository.
 
 Codex:
 
 ```bash
-./scripts/install-codex.sh
-# Optional: also install all 11 Agent TOML files in the current project
-./scripts/install-codex.sh --project-agents
+codex plugin marketplace add Rockiez/lit-panel
+codex plugin add lit-panel@lit-panel
 ```
 
 Claude Code:
 
 ```bash
-./scripts/install-claude.sh
+claude plugin marketplace add Rockiez/lit-panel
+claude plugin install lit-panel@lit-panel
 ```
 
 Antigravity:
 
 ```bash
-./scripts/install-antigravity.sh --cli
-./scripts/install-antigravity.sh --ide
-./scripts/install-antigravity.sh --workspace /path/to/project
+agy plugin install https://github.com/Rockiez/lit-panel/tree/main/dist/antigravity
 ```
 
-The resulting `dist/codex`, `dist/claude`, and `dist/antigravity` adapters are self-contained. Each includes personas, criteria, schemas, the report template, and runtime scripts; no distribution needs to read assets from the source checkout.
+Start a new Codex task, Claude Code session, or Antigravity session after installation so the host refreshes plugin discovery.
+
+Installation itself never runs `scripts/build_dist.py`. Verbatim verification and report derivation still require Python 3.10+ at runtime; that is an execution dependency, not an installation build step. The committed `dist/codex`, `dist/claude`, and `dist/antigravity` packages each include personas, criteria, schemas, the report template, and runtime scripts.
+
+Clone the repository only for local/offline installation or development. In that case, `./scripts/install-codex.sh`, `./scripts/install-claude.sh`, and `./scripts/install-antigravity.sh` consume committed `dist` packages by default; maintainers can pass `--rebuild` after changing `core/` or `adapters/`. Codex's optional project Agent TOML files remain available through `./scripts/install-codex.sh --project-agents`.
 
 ## Runtime model
 

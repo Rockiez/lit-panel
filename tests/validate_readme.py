@@ -11,7 +11,7 @@ FILES = ("README.md", "README.en.md", "README.fr.md", "README.es.md")
 NAV = "[简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)"
 
 REQUIRED_LITERAL = (
-    "0.5.0",
+    "0.5.1",
     "Codex",
     "0.147.0",
     "Claude Code",
@@ -22,6 +22,9 @@ REQUIRED_LITERAL = (
     "lit-naive-reader",
     "A/B/C/N/A",
     "scripts/release_check.py",
+    "codex plugin marketplace add Rockiez/lit-panel",
+    "claude plugin marketplace add Rockiez/lit-panel",
+    "agy plugin install https://github.com/Rockiez/lit-panel/tree/main/dist/antigravity",
 )
 
 FORBIDDEN = (

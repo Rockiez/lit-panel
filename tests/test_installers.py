@@ -106,6 +106,14 @@ class InstallerShellTests(unittest.TestCase):
             encoding="utf-8",
         )
         build.chmod(0o755)
+        for host in ("codex", "claude", "antigravity"):
+            scripts = self.root / "dist" / host / "skills" / "lit-panel" / "scripts"
+            scripts.mkdir(parents=True, exist_ok=True)
+            for name in ("verify_quotes.py", "verify-quotes.py"):
+                (scripts / name).write_text(
+                    "import argparse; argparse.ArgumentParser().parse_args()\n",
+                    encoding="utf-8",
+                )
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -179,7 +187,12 @@ else:
         conflict.write_text("old\n", encoding="utf-8")
         unrelated = agents / "custom.toml"
         unrelated.write_text("custom\n", encoding="utf-8")
-        env = self.environment(FAKE_MARKETPLACE_STATE=str(state), FAKE_DIST=str(dist))
+        marker = self.root / "build-called"
+        env = self.environment(
+            FAKE_MARKETPLACE_STATE=str(state),
+            FAKE_DIST=str(dist),
+            FAKE_BUILD_MARKER=str(marker),
+        )
 
         blocked = subprocess.run(
             [str(installer), "--project-agents"],
@@ -209,6 +222,7 @@ else:
         self.assertEqual(conflict.read_text(encoding="utf-8"), "new\n")
         self.assertEqual(unrelated.read_text(encoding="utf-8"), "custom\n")
         self.assertIn(str(backups[0]), forced.stdout)
+        self.assertFalse(marker.exists(), "default Codex install must not rebuild dist")
 
     def test_failed_forced_marketplace_switch_restores_previous_path(self) -> None:
         installer = self.copy_installer("install-codex.sh")
@@ -278,6 +292,52 @@ else:
         self.assertIn("跳过重复注册", result.stdout)
         self.assertIn("跳过重复安装", result.stdout)
 
+    def test_installers_use_committed_distributions_without_rebuilding(self) -> None:
+        installer = self.copy_installer("install-claude.sh")
+        mutation_log = self.root / "claude-mutation"
+        marker = self.root / "build-called"
+        self.install_fake_claude("2.1.195", mutation_log)
+
+        result = subprocess.run(
+            [str(installer)],
+            cwd=self.root,
+            env=self.environment(FAKE_BUILD_MARKER=str(marker)),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists(), "default install must not rebuild dist")
+
+    def test_rebuild_is_explicit_and_unknown_options_are_rejected(self) -> None:
+        installer = self.copy_installer("install-claude.sh")
+        mutation_log = self.root / "claude-mutation"
+        marker = self.root / "build-called"
+        self.install_fake_claude("2.1.195", mutation_log)
+
+        rejected = subprocess.run(
+            [str(installer), "--unexpected"],
+            cwd=self.root,
+            env=self.environment(FAKE_BUILD_MARKER=str(marker)),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertFalse(marker.exists())
+
+        rebuilt = subprocess.run(
+            [str(installer), "--rebuild"],
+            cwd=self.root,
+            env=self.environment(FAKE_BUILD_MARKER=str(marker)),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(rebuilt.returncode, 0, rebuilt.stderr)
+        self.assertTrue(marker.exists(), "--rebuild must refresh dist explicitly")
+
     def test_claude_installer_rejects_same_name_marketplace_from_other_source(self) -> None:
         installer = self.copy_installer("install-claude.sh")
         mutation_log = self.root / "claude-mutation"
@@ -333,15 +393,16 @@ else:
     def test_antigravity_workspace_copy_does_not_require_cli(self) -> None:
         installer = self.copy_installer("install-antigravity.sh")
         dist = self.root / "dist" / "antigravity"
-        dist.mkdir(parents=True)
+        dist.mkdir(parents=True, exist_ok=True)
         (dist / "plugin.json").write_text("{}\n", encoding="utf-8")
         workspace = self.root / "workspace"
         workspace.mkdir()
+        marker = self.root / "build-called"
 
         result = subprocess.run(
             [str(installer), "--workspace", str(workspace)],
             cwd=self.root,
-            env=self.environment(),
+            env=self.environment(FAKE_BUILD_MARKER=str(marker)),
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -349,11 +410,43 @@ else:
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((workspace / ".agents/plugins/lit-panel/plugin.json").is_file())
+        self.assertFalse(marker.exists(), "default Antigravity install must not rebuild dist")
+
+        repeated = subprocess.run(
+            [str(installer), "--workspace", str(workspace)],
+            cwd=self.root,
+            env=self.environment(FAKE_BUILD_MARKER=str(marker)),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertIn("已是当前分发", repeated.stdout)
+
+    def test_missing_committed_distribution_fails_without_rebuilding(self) -> None:
+        installer = self.copy_installer("install-claude.sh")
+        mutation_log = self.root / "claude-mutation"
+        marker = self.root / "build-called"
+        self.install_fake_claude("2.1.195", mutation_log)
+        shutil.rmtree(self.root / "dist" / "claude")
+
+        result = subprocess.run(
+            [str(installer)],
+            cwd=self.root,
+            env=self.environment(FAKE_BUILD_MARKER=str(marker)),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists())
+        self.assertIn("完整 release checkout", result.stderr)
 
     def test_antigravity_failed_force_copy_preserves_existing_plugin(self) -> None:
         installer = self.copy_installer("install-antigravity.sh")
         dist = self.root / "dist" / "antigravity"
-        dist.mkdir(parents=True)
+        dist.mkdir(parents=True, exist_ok=True)
         (dist / "plugin.json").write_text("{\"new\": true}\n", encoding="utf-8")
         workspace = self.root / "workspace"
         existing = workspace / ".agents/plugins/lit-panel"

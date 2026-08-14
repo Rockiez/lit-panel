@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La version 0.5.0 est un plugin de critique littéraire à onze sièges pour les mémoires et les récits en chinois. Chaque siège s’exécute dans un contexte de subagent réel et isolé. Les sièges rendent des jugements structurés accompagnés de citations littérales ; des scripts ferment la chaîne d’exécution, valident les schémas, invalident les citations non vérifiables et dérivent une bande qualitative A/B/C/N/A. Agent Plugins est la voie d’installation et de découverte de premier rang avec Codex CLI 0.147.0 ou version ultérieure.
+La version 0.5.1 est un plugin de critique littéraire à onze sièges pour les mémoires et les récits en chinois. Chaque siège s’exécute dans un contexte de subagent réel et isolé. Les sièges rendent des jugements structurés accompagnés de citations littérales ; des scripts ferment la chaîne d’exécution, valident les schémas, invalident les citations non vérifiables et dérivent une bande qualitative A/B/C/N/A. Agent Plugins est la voie d’installation et de découverte de premier rang avec Codex CLI 0.147.0 ou version ultérieure.
 
 ## Matrice de compatibilité
 
@@ -16,35 +16,33 @@ Le noyau portable de la spécification ouverte [Agent Plugins 1.0](https://agent
 
 ## Installation
 
-Construisez d’abord les trois distributions :
-
-```bash
-python3 scripts/build_dist.py
-```
+L’installation normale ne nécessite ni de cloner le dépôt ni d’exécuter d’abord le constructeur Python. Le gestionnaire de plugins natif de chaque hôte lit directement sa distribution autonome et versionnée dans le dépôt.
 
 Codex :
 
 ```bash
-./scripts/install-codex.sh
-# Facultatif : installer aussi les 11 fichiers Agent TOML dans le projet courant
-./scripts/install-codex.sh --project-agents
+codex plugin marketplace add Rockiez/lit-panel
+codex plugin add lit-panel@lit-panel
 ```
 
 Claude Code :
 
 ```bash
-./scripts/install-claude.sh
+claude plugin marketplace add Rockiez/lit-panel
+claude plugin install lit-panel@lit-panel
 ```
 
 Antigravity :
 
 ```bash
-./scripts/install-antigravity.sh --cli
-./scripts/install-antigravity.sh --ide
-./scripts/install-antigravity.sh --workspace /path/to/project
+agy plugin install https://github.com/Rockiez/lit-panel/tree/main/dist/antigravity
 ```
 
-Les adaptateurs produits dans `dist/codex`, `dist/claude` et `dist/antigravity` sont autonomes. Chacun contient les personas, les critères, les schémas, le modèle de rapport et les scripts d’exécution ; aucune distribution ne doit relire les ressources du dépôt source.
+Après l’installation, démarrez une nouvelle tâche Codex, une nouvelle session Claude Code ou une nouvelle session Antigravity afin que l’hôte actualise la découverte des plugins.
+
+L’installation elle-même n’exécute jamais `scripts/build_dist.py`. La vérification littérale et la dérivation du rapport exigent toujours Python 3.10+ à l’exécution ; il s’agit d’une dépendance d’exécution, pas d’une étape de construction préalable. Les paquets `dist/codex`, `dist/claude` et `dist/antigravity` incluent chacun les personas, les critères, les schémas, le modèle de rapport et les scripts.
+
+Clonez le dépôt uniquement pour une installation locale/hors ligne ou pour le développement. Dans ce cas, `./scripts/install-codex.sh`, `./scripts/install-claude.sh` et `./scripts/install-antigravity.sh` consomment les `dist` versionnés par défaut ; les mainteneurs peuvent ajouter `--rebuild` après une modification de `core/` ou `adapters/`. Les fichiers Agent TOML facultatifs de Codex restent disponibles avec `./scripts/install-codex.sh --project-agents`.
 
 ## Modèle d’exécution
 

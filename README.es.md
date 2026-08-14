@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La versión 0.5.0 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan una banda cualitativa A/B/C/N/A. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
+La versión 0.5.1 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan una banda cualitativa A/B/C/N/A. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
 
 ## Matriz de compatibilidad
 
@@ -16,35 +16,33 @@ El núcleo portable de la especificación abierta [Agent Plugins 1.0](https://ag
 
 ## Instalación
 
-Primero construya las tres distribuciones:
-
-```bash
-python3 scripts/build_dist.py
-```
+La instalación normal no requiere clonar el repositorio ni ejecutar primero el constructor de Python. El gestor de plugins nativo de cada host lee directamente su distribución autocontenida y versionada en el repositorio.
 
 Codex:
 
 ```bash
-./scripts/install-codex.sh
-# Opcional: instalar también los 11 archivos Agent TOML en el proyecto actual
-./scripts/install-codex.sh --project-agents
+codex plugin marketplace add Rockiez/lit-panel
+codex plugin add lit-panel@lit-panel
 ```
 
 Claude Code:
 
 ```bash
-./scripts/install-claude.sh
+claude plugin marketplace add Rockiez/lit-panel
+claude plugin install lit-panel@lit-panel
 ```
 
 Antigravity:
 
 ```bash
-./scripts/install-antigravity.sh --cli
-./scripts/install-antigravity.sh --ide
-./scripts/install-antigravity.sh --workspace /path/to/project
+agy plugin install https://github.com/Rockiez/lit-panel/tree/main/dist/antigravity
 ```
 
-Los adaptadores resultantes en `dist/codex`, `dist/claude` y `dist/antigravity` son autocontenidos. Cada uno incluye personas, criterios, esquemas, plantilla de informe y scripts de ejecución; ninguna distribución necesita leer recursos desde el checkout fuente.
+Después de instalar, abra una nueva tarea de Codex, sesión de Claude Code o sesión de Antigravity para que el host actualice el descubrimiento del plugin.
+
+La instalación nunca ejecuta `scripts/build_dist.py`. La verificación literal y la derivación de informes todavía requieren Python 3.10+ en tiempo de ejecución; es una dependencia de ejecución, no un paso previo de construcción. Los paquetes `dist/codex`, `dist/claude` y `dist/antigravity` incluyen personas, criterios, esquemas, plantilla de informe y scripts.
+
+Clone el repositorio solo para una instalación local/sin conexión o para desarrollo. En ese caso, `./scripts/install-codex.sh`, `./scripts/install-claude.sh` y `./scripts/install-antigravity.sh` consumen los `dist` versionados de forma predeterminada; los mantenedores pueden añadir `--rebuild` después de modificar `core/` o `adapters/`. Los archivos Agent TOML opcionales de Codex siguen disponibles mediante `./scripts/install-codex.sh --project-agents`.
 
 ## Modelo de ejecución
 

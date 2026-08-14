@@ -3,5 +3,7 @@ tests/fixtures/
 # 测试运行产物
 tests/runs/
 .omc/
-.agents/
+.agents/*
+!.agents/plugins/
+!.agents/plugins/marketplace.json
 .DS_Store

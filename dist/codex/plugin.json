@@ -1,0 +1,29 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "lit-panel",
+  "version": "0.5.0",
+  "description": "Evidence-grounded multi-agent literary review for Chinese memoir and narrative text.",
+  "author": {
+    "name": "Anamnese"
+  },
+  "homepage": "https://github.com/Rockiez/lit-panel",
+  "repository": "https://github.com/Rockiez/lit-panel",
+  "license": "MIT",
+  "keywords": [
+    "literary-review",
+    "memoir",
+    "multi-agent",
+    "chinese-writing"
+  ],
+  "extensions": {
+    "com.anamnese.lit-panel": {
+      "core": "skills/lit-panel",
+      "supportedHosts": {
+        "codex": ">=0.147.0",
+        "claude-code": ">=2.1.63",
+        "antigravity-cli": ">=1.1.12"
+      },
+      "requiresNativeSubagents": true
+    }
+  }
+}

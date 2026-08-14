@@ -1,0 +1,13 @@
+{
+  "name": "lit-panel",
+  "version": "0.5.0",
+  "description": "Eleven-seat Chinese literary review using native Codex subagents, exact quote verification, and qualitative bands.",
+  "author": {
+    "name": "Anamnese"
+  },
+  "homepage": "https://github.com/Rockiez/lit-panel",
+  "repository": "https://github.com/Rockiez/lit-panel",
+  "license": "MIT",
+  "keywords": ["literary-review", "memoir", "subagents", "chinese-writing"],
+  "skills": "./skills/"
+}

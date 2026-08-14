@@ -22,9 +22,9 @@ SRC="${REPO_ROOT}/skills/lit-panel"
 DEST_DIR="${HOME}/.agents/skills"
 DEST="${DEST_DIR}/lit-panel"
 
-# 前置检查：源 skill 目录必须存在且包含 SKILL.md。
-if [ ! -f "${SRC}/SKILL.md" ]; then
-  echo "错误：未找到 ${SRC}/SKILL.md，无法安装。" >&2
+# 前置检查：源 skill 目录必须包含说明与可独立执行的核验器。
+if [ ! -f "${SRC}/SKILL.md" ] || [ ! -f "${SRC}/scripts/verify-quotes.py" ]; then
+  echo "错误：${SRC} 缺少 SKILL.md 或 scripts/verify-quotes.py，无法安装。" >&2
   echo "请确认在完整的 lit-panel 仓库内运行本脚本。" >&2
   exit 1
 fi
@@ -54,8 +54,9 @@ echo ""
 echo "验证指引："
 echo "  1. 确认文件已就位：ls -la \"${DEST}\""
 echo "  2. 确认 frontmatter 完整：head -n 5 \"${DEST}/SKILL.md\""
-echo "  3. 开一个新的 Codex 会话（已打开的会话不会重新扫描 skill 目录），"
+echo "  3. 确认核验器可执行：python3 \"${DEST}/scripts/verify-quotes.py\" --help"
+echo "  4. 开一个新的 Codex 会话（已打开的会话不会重新扫描 skill 目录），"
 echo "     让它评审一段中文回忆录/叙事文本片段，确认它能读取并遵循"
 echo "     lit-panel 的判据文件与输出契约。"
-echo "  4. Codex 没有并行 subagent 机制，十一席会按 SKILL.md 编排逐席"
+echo "  5. Codex 没有并行 subagent 机制，十一席会按 SKILL.md 编排逐席"
 echo "     顺序执行；这是预期行为，互盲语义与 Claude Code 并行执行等价。"

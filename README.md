@@ -182,7 +182,7 @@ cp -r skills/lit-panel ~/.agents/skills/lit-panel
 
 **学术报告结构规范**：标准化 `/lit-review` 报告遵循固定阅读序列（八大区块，标题不带编号）：**总评（评委会综合意见，2-3段） $\rightarrow$ 红线警报（若触发事实违背，居总分卡前） $\rightarrow$ 导出总分卡（总分/等级/核心判语） $\rightarrow$ 多维学术评分表（文学四维+原创加分+AI痕迹+读者体验+忠实度） $\rightarrow$ 评委分论（11 席真实口吻批评，嵌入原文逐字引证） $\rightarrow$ 问题与修订建议清单 $\rightarrow$ 需人工裁决区（分歧与待仲裁条目，严禁表格化） $\rightarrow$ 评议元数据归档**。全量判据明细与核验流水移入侧车文件 `<报告名>-details.md`。
 
-**独立引证复核工具**：如需在会话外独立复核评审报告中的引证真实性，可运行随包分发的 Tier 1–5 分层核验脚本：`python3 scripts/verify-quotes.py quotes.json 章节.md [--source 访谈.md] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--max-tier 5]`。
+**独立引证复核工具**：如需在会话外独立复核评审报告中的引证真实性，可运行随包分发的 Tier 1–5 分层核验脚本：`python3 <skill-dir>/scripts/verify-quotes.py quotes.json 章节.md --max-tier 5 [--source 访谈.md] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--include-tier]`（默认 `--max-tier 1` 保持精确包含，推荐阶段二显式指定 `--max-tier 5` 启用分层核验；Tier 4 仅生成非通过仲裁候选，不计入 Tier 5 作废；JSON 声明 `schema_version` `lit-panel.quote-verification/v1`）。
 
 ## 5. 参数形式化定义
 

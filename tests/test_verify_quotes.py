@@ -15,8 +15,11 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -227,6 +230,21 @@ class TestTier3SpanEllipsisMatching(unittest.TestCase):
         self.assertEqual(res_bullet.verdict, "通过")
         self.assertEqual(res_bullet.tier, VerificationTier.SPAN_ELLIPSIS)
 
+    def test_one_character_ellipsis_anchors_fail_closed(self):
+        res = verify_one("他……的", "这是他昨天亲口告诉我的。", None, target_kind="text")
+        self.assertEqual(res.verdict, "作废")
+        self.assertEqual(res.tier, VerificationTier.VOID)
+
+    def test_repeated_ellipsis_anchor_has_linear_runtime(self):
+        started = time.perf_counter()
+        matched, _, _, _ = match_tier_3_ellipsis(
+            "一个……甲乙丙丁",
+            "一个" * 40000,
+        )
+        elapsed = time.perf_counter() - started
+        self.assertFalse(matched)
+        self.assertLess(elapsed, 1.0, f"ellipsis matching took {elapsed:.3f}s")
+
 
 class TestTier4FuzzyAlignmentMatching(unittest.TestCase):
     """Tier 4: 模糊对齐匹配测试 (容错对齐、相似度阈值控制)"""
@@ -238,29 +256,29 @@ class TestTier4FuzzyAlignmentMatching(unittest.TestCase):
             "编号：NO.12345，志愿已经递交。"
         )
 
-    def test_minor_typo_fuzzy_match(self):
-        # "题本" -> "笔记本" (相似度高于 0.85)
+    def test_minor_typo_fuzzy_match_requires_manual_arbitration(self):
+        # "题本" -> "笔记本" (相似度高于 0.85)，只能进入人工仲裁，不能当作逐字通过。
         quote = "服从分配几个字并不写在她的笔记本上，却在升学去向的秩序里压着。"
         res = verify_one(quote, self.sample_text, None, target_kind="text", fuzzy_threshold=0.85)
-        self.assertEqual(res.verdict, "通过")
+        self.assertEqual(res.verdict, "作废")
         self.assertEqual(res.tier, VerificationTier.FUZZY)
         self.assertEqual(res.tier_name, "Fuzzy Alignment")
         self.assertGreaterEqual(res.score, 0.85)
-        self.assertIn("模糊对齐命中", res.reason)
+        self.assertIn("待人工仲裁", res.reason)
 
     def test_fuzzy_with_fullwidth_and_quote_normalization(self):
         # 全角数字 + 引号变体 + 轻微错字（"志原" vs "志愿"），归一化模糊对齐命中
         quote = "编号：ＮＯ．１２３４５，志原已经递交。"
         res = verify_one(quote, self.sample_text, None, target_kind="text", fuzzy_threshold=0.85)
-        self.assertEqual(res.verdict, "通过")
+        self.assertEqual(res.verdict, "作废")
         self.assertEqual(res.tier, VerificationTier.FUZZY)
         self.assertGreaterEqual(res.score, 0.85)
 
     def test_fuzzy_threshold_boundary(self):
-        # 轻微差异在默认 0.85 阈值下通过，在严格 0.98 阈值下被拦截作废
+        # 轻微差异在默认阈值下成为 Tier 4 仲裁候选，严格阈值下不产生候选。
         quote = "两件事挤在一盏灯下面，谁也不能替谁让开很多。"  # "太多" -> "很多"
         res_pass = verify_one(quote, self.sample_text, None, target_kind="text", fuzzy_threshold=0.85)
-        self.assertEqual(res_pass.verdict, "通过")
+        self.assertEqual(res_pass.verdict, "作废")
         self.assertEqual(res_pass.tier, VerificationTier.FUZZY)
 
         res_strict = verify_one(quote, self.sample_text, None, target_kind="text", fuzzy_threshold=0.98)
@@ -286,8 +304,69 @@ class TestTier4FuzzyAlignmentMatching(unittest.TestCase):
         large_text = ("这是一段很长的关于文学理论与叙事艺术的探讨分析文本，我们在这里做详细的展开论述。" * 1000) * 10
         quote_typo = "这是一段很长的关于哲学理论与叙事艺术的探讨分析文本，我们在这里做详细的展开论述。"
         res = verify_one(quote_typo, large_text, None, target_kind="text")
-        self.assertEqual(res.verdict, "通过")
+        self.assertEqual(res.verdict, "作废")
         self.assertEqual(res.tier, VerificationTier.FUZZY)
+
+    def test_fuzzy_factual_changes_never_pass(self):
+        cases = [
+            ("她明确表示会烧饭。", "她明确表示不会烧饭。"),
+            ("他借了八万元用于修建新房。", "他借了三万元用于修建新房。"),
+        ]
+        for quote, text in cases:
+            with self.subTest(quote=quote):
+                res = verify_one(quote, text, None, target_kind="text")
+                self.assertEqual(res.verdict, "作废")
+                self.assertEqual(res.tier, VerificationTier.FUZZY)
+                self.assertIn("待人工仲裁", res.reason)
+
+    def test_clipped_fuzzy_window_cannot_accept_fabricated_suffix(self):
+        matched, score, snippet = match_tier_4_fuzzy(
+            "甲" * 75 + "乙" * 25,
+            "甲" * 75,
+            threshold=0.85,
+        )
+        self.assertFalse(matched)
+        self.assertLess(score, 0.85)
+        self.assertIsNone(snippet)
+
+    def test_fuzzy_threshold_one_is_not_bypassed_by_shortcut(self):
+        matched, score, _ = match_tier_4_fuzzy(
+            "甲" * 100 + "乙",
+            "乙" + "甲" * 100,
+            threshold=1.0,
+        )
+        self.assertFalse(matched)
+        self.assertLess(score, 1.0)
+
+    def test_frequent_early_ngram_does_not_hide_distinctive_candidate(self):
+        quote = "的确的这是一条非常独特而且完整的引文内容"
+        typo_candidate = "的确的这是一条非常独特而且完整的引文字容"
+        haystack = "的确的" * 150 + typo_candidate
+
+        matched, score, snippet = match_tier_4_fuzzy(
+            quote, haystack, threshold=0.85
+        )
+
+        self.assertTrue(matched)
+        self.assertGreater(score, 0.9)
+        self.assertIsNotNone(snippet)
+        self.assertIn("非常独特", snippet)
+
+    def test_fuzzy_matcher_returns_best_near_eof_window(self):
+        quote = "甲" * 99 + "乙"
+        haystack = "甲" * 99
+
+        matched, score, snippet = match_tier_4_fuzzy(
+            quote, haystack, threshold=0.85
+        )
+
+        self.assertTrue(matched)
+        self.assertGreater(score, 0.99)
+        self.assertEqual(snippet, haystack)
+
+    def test_fuzzy_matcher_rejects_threshold_below_documented_floor(self):
+        with self.assertRaisesRegex(ValueError, "0.5"):
+            match_tier_4_fuzzy("甲乙丙丁", "戊己庚辛", threshold=0.0)
 
 
 class TestTier5VoidAndSkip(unittest.TestCase):
@@ -321,11 +400,35 @@ class TestTier5VoidAndSkip(unittest.TestCase):
         self.assertEqual(res.tier, VerificationTier.VOID)
         self.assertIn("格式违约", res.reason)
 
+    def test_multi_quote_unspaced_slash_violation(self):
+        quote = "【第一句正文】/【第二句正文】"
+        text = "第一句正文。第二句正文。"
+        res = verify_one(quote, text, None, target_kind="text")
+        self.assertEqual(res.verdict, "作废")
+        self.assertEqual(res.tier, VerificationTier.VOID)
+        self.assertIn("格式违约", res.reason)
+
     def test_non_violation_date_slash_allowed(self):
         quote = "记录于1952/05/01"
         res = verify_one(quote, self.sample_text, None, target_kind="text")
         self.assertEqual(res.verdict, "通过")
         self.assertEqual(res.tier, VerificationTier.EXACT)
+
+    def test_numeric_looking_slash_cannot_join_two_quotes(self):
+        quote = "【第一句正文】1/2【第二句正文】"
+        text = "第一句正文1。2第二句正文"
+        res = verify_one(quote, text, None, target_kind="text")
+        self.assertEqual(res.verdict, "作废")
+        self.assertEqual(res.tier, VerificationTier.VOID)
+        self.assertIn("格式违约", res.reason)
+
+    def test_date_slash_cannot_join_two_bracketed_quotes(self):
+        quote = "【第一句正文】2024/01/01【第二句正文】"
+        text = "第一句正文2024。01。01第二句正文"
+        res = verify_one(quote, text, None, target_kind="text")
+        self.assertEqual(res.verdict, "作废")
+        self.assertEqual(res.tier, VerificationTier.VOID)
+        self.assertIn("格式违约", res.reason)
 
     def test_multi_quote_before_after_annotation_violation(self):
         quote = "（前）这是前一句（后）这是后一句"
@@ -340,6 +443,18 @@ class TestTier5VoidAndSkip(unittest.TestCase):
         self.assertEqual(res.verdict, "作废")
         self.assertEqual(res.tier, VerificationTier.VOID)
         self.assertIn("格式违约", res.reason)
+
+    def test_multi_quote_long_and_numbered_annotations_violation(self):
+        violations = [
+            "（前段）第一句正文（后段）第二句正文",
+            "（1）第一句正文（2）第二句正文",
+        ]
+        for quote in violations:
+            with self.subTest(quote=quote):
+                self.assertTrue(has_multi_quote_format_violation(quote))
+                res = verify_one(quote, self.sample_text, None, target_kind="text")
+                self.assertEqual(res.verdict, "作废")
+                self.assertEqual(res.tier, VerificationTier.VOID)
 
     def test_missing_source_when_target_is_source(self):
         quote = "某来源引文"
@@ -392,6 +507,10 @@ class TestTier5VoidAndSkip(unittest.TestCase):
         res_none = verify_one(None, self.sample_text, None, target_kind="text")
         self.assertEqual(res_none.verdict, "跳过")
         self.assertEqual(res_none.quote, "")
+
+    def test_unknown_target_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "target"):
+            verify_one("只在正文出现", "只在正文出现", None, target_kind="soruce")
 
 
 class TestSourceDirectoryHandling(unittest.TestCase):
@@ -514,7 +633,7 @@ class TestMaxTierLimiting(unittest.TestCase):
         self.assertEqual(res1.verdict, "作废")
 
         res2 = verify_one(quote, self.sample_text, None, target_kind="text", max_tier=4)
-        self.assertEqual(res2.verdict, "通过")
+        self.assertEqual(res2.verdict, "作废")
         self.assertEqual(res2.tier, VerificationTier.FUZZY)
 
     def test_max_tier_transitions_full_matrix(self):
@@ -548,7 +667,9 @@ class TestMaxTierLimiting(unittest.TestCase):
             self.assertEqual(verify_one(q_exact, sample, None, max_tier=mt).verdict, "通过")
             self.assertEqual(verify_one(q_norm, sample, None, max_tier=mt).verdict, "通过")
             self.assertEqual(verify_one(q_ellipsis, sample, None, max_tier=mt).verdict, "通过")
-            self.assertEqual(verify_one(q_fuzzy, sample, None, max_tier=mt).verdict, "通过")
+            fuzzy_result = verify_one(q_fuzzy, sample, None, max_tier=mt)
+            self.assertEqual(fuzzy_result.verdict, "作废")
+            self.assertEqual(fuzzy_result.tier, VerificationTier.FUZZY)
 
 
 class TestTupleUnpackingCompatibility(unittest.TestCase):
@@ -647,7 +768,7 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_cli_fuzzy_threshold_out_of_bounds(self):
-        # 阈值超出 [0.0, 1.0] 应返回退出码 2
+        # 阈值超出文档约定的 [0.5, 1.0] 应返回退出码 2
         code_high = main([
             str(self.quotes_pass_file),
             str(self.text_file),
@@ -661,6 +782,15 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
             "--fuzzy-threshold", "-0.1",
         ])
         self.assertEqual(code_low, 2)
+
+        for threshold in ("0", "0.49"):
+            with self.subTest(threshold=threshold):
+                code_below_floor = main([
+                    str(self.quotes_pass_file),
+                    str(self.text_file),
+                    "--fuzzy-threshold", threshold,
+                ])
+                self.assertEqual(code_below_floor, 2)
 
     def test_cli_format_json_output(self):
         captured_out = io.StringIO()
@@ -679,6 +809,7 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
         self.assertEqual(code, 0)
         output_str = captured_out.getvalue()
         data = json.loads(output_str)
+        self.assertEqual(data["schema_version"], "lit-panel.quote-verification/v1")
         self.assertIn("summary", data)
         self.assertEqual(data["summary"]["total"], 3)
         self.assertEqual(data["summary"]["passed"], 2)
@@ -703,15 +834,46 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
 
         self.assertEqual(code, 0)
         output_str = captured_out.getvalue()
-        self.assertIn("| 席位 | id | 结果 | Tier | 引文 | 说明 |", output_str)
-        self.assertIn("| lit-continuity | C1 | 通过 | Tier 1 (Exact) |", output_str)
+        self.assertIn("| 席位 | id | 结果 | 引文 | 说明 |", output_str)
+        self.assertNotIn("| Tier |", output_str)
+        self.assertIn("| lit-continuity | C1 | 通过 | “至少一个月，夜晚被这样切开。” |", output_str)
+
+    def test_cli_include_tier_opt_in(self):
+        captured_out = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured_out
+        try:
+            code = main([
+                str(self.quotes_pass_file),
+                str(self.text_file),
+                "--source", str(self.source_file),
+                "--format", "markdown",
+                "--include-tier",
+            ])
+        finally:
+            sys.stdout = old_stdout
+
+        self.assertEqual(code, 0)
+        self.assertIn("| 席位 | id | 结果 | Tier | 引文 | 说明 |", captured_out.getvalue())
 
     def test_malformed_entries_handling(self):
-        # entries 包含非字典元素或异常字段时不应崩溃
-        entries = ["invalid_entry", {"quote": "至少一个月，夜晚被这样切开。"}, None]
-        results = verify_entries(entries, "至少一个月，夜晚被这样切开。", None)
-        self.assertEqual(len(results), 3)
-        self.assertEqual(results[1].verdict, "通过")
+        malformed_batches = [
+            ["invalid_entry"],
+            [{}],
+            [{"quote": None}],
+            [{"quote": 12345}],
+            [{"quote": "正文", "target": "soruce"}],
+        ]
+        for entries in malformed_batches:
+            with self.subTest(entries=entries):
+                with self.assertRaises(ValueError):
+                    verify_entries(entries, "至少一个月，夜晚被这样切开。", None)
+
+    def test_cli_malformed_entries_exit_two(self):
+        malformed_file = self.tmppath / "quotes_malformed.json"
+        malformed_file.write_text("[{}]", encoding="utf-8")
+        code = main([str(malformed_file), str(self.text_file), "--format", "json"])
+        self.assertEqual(code, 2)
 
     def test_cli_directory_as_text_path_error(self):
         # 被评文本传入目录而非文件应返回退出码 2
@@ -739,16 +901,49 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
         tsv_out = format_output_text(results)
         self.assertNotIn("\r", tsv_out)
         self.assertNotIn("\n", tsv_out)
-        self.assertEqual(len(tsv_out.split("\t")), 6)
+        self.assertEqual(len(tsv_out.split("\t")), 5)
+        self.assertEqual(len(format_output_text(results, include_tier=True).split("\t")), 6)
 
         md_out = format_output_markdown(results)
         # 表格应该只有2行表头 + 1行数据行 = 3行
         md_lines = md_out.strip().split("\n")
         self.assertEqual(len(md_lines), 3)
-        # 每一行使用未转义的 | 分隔后必须有 8 个元素（前后空白+6列）
+        # 默认维持旧版 5 列；Tier 列只在显式 opt-in 时添加。
         import re
-        self.assertEqual(len(re.split(r"(?<!\\)\|", md_lines[2])), 8)
+        self.assertEqual(len(re.split(r"(?<!\\)\|", md_lines[2])), 7)
         self.assertIn(r"\|", md_lines[2])
+        md_with_tier = format_output_markdown(results, include_tier=True)
+        self.assertEqual(len(re.split(r"(?<!\\)\|", md_with_tier.strip().split("\n")[2])), 8)
+
+    def test_json_schema_distinguishes_fuzzy_candidates_from_tier_5_void(self):
+        fuzzy_candidate = VerificationResult(
+            seat="lit-continuity",
+            id="C1",
+            verdict="作废",
+            tier=VerificationTier.FUZZY,
+            tier_name="Fuzzy Alignment",
+            quote="候选引文",
+            target_kind="text",
+            reason="Tier 4: 待人工仲裁",
+            score=0.9,
+        )
+        hard_void = VerificationResult(
+            seat="lit-continuity",
+            id="C2",
+            verdict="作废",
+            tier=VerificationTier.VOID,
+            tier_name="Void",
+            quote="伪造引文",
+            target_kind="text",
+            reason="Tier 5: 作废",
+            score=0.0,
+        )
+        data = json.loads(format_output_json([fuzzy_candidate, hard_void]))
+        breakdown = data["summary"]["tier_breakdown"]
+        self.assertEqual(data["schema_version"], "lit-panel.quote-verification/v1")
+        self.assertEqual(data["summary"]["failed"], 2)
+        self.assertEqual(breakdown["tier_4_fuzzy_candidates"], 1)
+        self.assertEqual(breakdown["tier_5_void"], 1)
 
     def test_cli_max_tier_argument(self):
         # 测试 CLI 传入 --max-tier 选项对判定的影响
@@ -774,6 +969,88 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
             "--max-tier", "3",
         ])
         self.assertEqual(code_t3, 0)
+
+    def test_cli_default_preserves_legacy_exact_only_behavior(self):
+        quotes_normalized = self.tmppath / "quotes_normalized.json"
+        quotes_normalized.write_text(
+            json.dumps([
+                {
+                    "seat": "lit-continuity",
+                    "id": "C1",
+                    "quote": "第一段:至少一个月,夜晚被这样切开.",
+                    "target": "text",
+                },
+            ], ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(main([str(quotes_normalized), str(self.text_file)]), 1)
+        self.assertEqual(
+            main([str(quotes_normalized), str(self.text_file), "--max-tier", "2"]),
+            0,
+        )
+
+
+class TestPackagedSkillVerifier(unittest.TestCase):
+    """技能目录被单独复制后仍应自包含机械核验 CLI。"""
+
+    def test_copied_skill_runs_outside_repository(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            installed_skill = temp_path / "installed" / "lit-panel"
+            installed_skill.parent.mkdir()
+            shutil.copytree(REPO_ROOT / "skills" / "lit-panel", installed_skill)
+
+            text_path = temp_path / "chapter.md"
+            text_path.write_text("至少一个月，夜晚被这样切开。", encoding="utf-8")
+            quotes_path = temp_path / "quotes.json"
+            verifier = installed_skill / "scripts" / "verify-quotes.py"
+
+            quotes_path.write_text(
+                json.dumps([{"quote": "至少一个月，夜晚被这样切开。"}], ensure_ascii=False),
+                encoding="utf-8",
+            )
+            good = subprocess.run(
+                [
+                    sys.executable,
+                    str(verifier),
+                    str(quotes_path),
+                    str(text_path),
+                    "--format",
+                    "json",
+                    "--max-tier",
+                    "5",
+                ],
+                cwd=temp_path,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(good.returncode, 0, good.stderr)
+            self.assertEqual(json.loads(good.stdout)["summary"]["passed"], 1)
+
+            quotes_path.write_text(
+                json.dumps([{"quote": "这是一条完全伪造的引文"}], ensure_ascii=False),
+                encoding="utf-8",
+            )
+            bad = subprocess.run(
+                [
+                    sys.executable,
+                    str(verifier),
+                    str(quotes_path),
+                    str(text_path),
+                    "--format",
+                    "json",
+                    "--max-tier",
+                    "5",
+                ],
+                cwd=temp_path,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(bad.returncode, 1, bad.stderr)
+            self.assertEqual(json.loads(bad.stdout)["summary"]["failed"], 1)
 
 
 if __name__ == "__main__":

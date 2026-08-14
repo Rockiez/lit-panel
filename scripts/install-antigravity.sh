@@ -60,9 +60,9 @@ fi
 
 DEST="${DEST_DIR}/lit-panel"
 
-# 前置检查：源 skill 目录必须存在且包含 SKILL.md。
-if [ ! -f "${SRC}/SKILL.md" ]; then
-  echo "错误：未找到 ${SRC}/SKILL.md，无法安装。" >&2
+# 前置检查：源 skill 目录必须包含说明与可独立执行的核验器。
+if [ ! -f "${SRC}/SKILL.md" ] || [ ! -f "${SRC}/scripts/verify-quotes.py" ]; then
+  echo "错误：${SRC} 缺少 SKILL.md 或 scripts/verify-quotes.py，无法安装。" >&2
   echo "请确认在完整的 lit-panel 仓库内运行本脚本。" >&2
   exit 1
 fi
@@ -96,7 +96,8 @@ echo ""
 echo "验证指引："
 echo "  1. 确认文件已就位：ls -la \"${DEST}\""
 echo "  2. 确认 frontmatter 完整：head -n 5 \"${DEST}/SKILL.md\""
-echo "  3. 在 Antigravity (IDE / CLI / 2.0) 中开启新会话，输入："
+echo "  3. 确认核验器可执行：python3 \"${DEST}/scripts/verify-quotes.py\" --help"
+echo "  4. 在 Antigravity (IDE / CLI / 2.0) 中开启新会话，输入："
 echo "     '帮我对 <文章路径> 进行文学评审' 或 '/lit-review <文章路径>'"
-echo "  4. Antigravity 会自动通过 invoke_subagent 并发派发 11 席评审员，"
+echo "  5. Antigravity 会自动通过 invoke_subagent 并发派发 11 席评审员，"
 echo "     在物理隔离的独立上下文中完成互盲评测与机械核验合成。"

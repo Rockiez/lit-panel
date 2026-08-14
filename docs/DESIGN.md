@@ -27,6 +27,8 @@ lit-panel/
 │   └── ethics-reviewer.md
 ├── skills/lit-panel/
 │   ├── SKILL.md                 # 编排逻辑（多平台共用的权威流程）
+│   ├── scripts/
+│   │   └── verify-quotes.py     # 随技能包分发的阶段二机械核验权威实现
 │   └── references/
 │       ├── registry.md          # 席位注册表（orchestrator 数据源）
 │       ├── criteria/            # 01-fidelity.md … 11-ethics.md + CHANGELOG.md
@@ -36,7 +38,7 @@ lit-panel/
 ├── scripts/
 │   ├── install-antigravity.sh   # Google Antigravity 安装脚本
 │   ├── install-codex.sh         # Codex 安装脚本
-│   └── verify-quotes.py         # 阶段二机械核验通用工具
+│   └── verify-quotes.py         # 仓库兼容入口（加载技能包内权威实现）
 ├── README.md  /  LICENSE (MIT)
 └── tests/ (fixtures 与 runs 均已 gitignore，不随包分发；tests/README.md 说明测试策略，随包分发)
 ```
@@ -87,7 +89,9 @@ lit-panel/
 ## 5. 评审流程（三阶段）与合成规则
 
 **阶段一｜并行评审（互盲）**：orchestrator 按预设从 registry.md 取席位 → 每席收到：被评文本 + 自己的判据文件内容 + 输出契约。**不得**注入他席结论/期望带位。机械预检先行：文本截断/未完成 = 致命失败，直接报告不开席。
-**阶段二｜机械核验**：由 `scripts/verify-quotes.py` 执行 Tier 1–5 分层核验引擎（Tier 1: Exact 精确匹配、Tier 2: Normalized 标点/全半角/空白归一化、Tier 3: Span Ellipsis 省略号跨度匹配、Tier 4: Fuzzy Alignment 字符级容错对齐、Tier 5: Void 作废与跳过）。对每条含 quote 的判定在原文/来源中分层核验；格式违约或查无此文判定作废并移入人工仲裁区。
+**阶段二｜机械核验**：由 `<skill-dir>/scripts/verify-quotes.py` 执行 Tier 1–5 分层核验引擎（Tier 1 Exact 精确匹配与 Tier 2 Normalized 标点/全半角/空白/去标点归一化可通过；Tier 3 Span Ellipsis 省略号跨度匹配要求每个实质片段 $\ge 2$ 字且总长 $\ge 4$ 字才可通过；Tier 4 Fuzzy Alignment 字符级容错对齐仅作为非通过仲裁候选生成，verdict 为作废并移入人工仲裁区，绝不进入有效证据集与阶段三合成；Tier 5 Void/Skip 覆盖硬作废与跳过占位）。推荐阶段二命令必须显式指定 `--max-tier 5`；格式违约、查无此文或 Tier 4 候选判定作废并移入人工仲裁区。
+
+阶段二 JSON 输入必须是对象数组，每项含必填字符串 `quote`，可选 `target` 只能是 `text` 或 `source`。主 `quote`、`来源引文`、`对照引文` 必须拆为三类独立记录，分别映射到 `target="text"`、`target="source"`、`target="text"`，禁止拼接多条引文。JSON 输出声明 `schema_version: "lit-panel.quote-verification/v1"`，并把 `tier_4_fuzzy_candidates` 与 `tier_5_void` 分开统计；TSV/Markdown 默认维持五列，只有显式 `--include-tier` 才增加 Tier 列。
 **阶段三｜合成（orchestrator 执行显式规则，不做二次审美判断）**：
 1. **红线区**：席01 CONTRADICTED/UNSUPPORTED 高严重度项 + 席02 确证矛盾（高严重度 NO）→ 红线清单（附成对引文）。红线≠停止诊断：报告照常给全。
 2. **判据向量**：全部有效判定按席归组列出。**禁止算比例分。**
@@ -114,7 +118,7 @@ lit-panel/
 
 1. 互盲：任何席位定义/提示中不得出现他席结论或"期望结论"。
 2. 评审席零打分；分数是判据向量的公开公式导出视图（v0.4.0起，见 SKILL.md §5.8），不是评审席自行报出的数字。
-3. 引证逐字 + Tier 1–5 机械核验（`scripts/verify-quotes.py`）+ 作废机制。
+3. 引证逐字 + Tier 1–5 机械核验（`<skill-dir>/scripts/verify-quotes.py`，Tier 1/2 可通过，Tier 3 省略号带片段长度约束可通过，Tier 4 仅作为非通过仲裁候选，Tier 5 硬作废/跳过）+ 作废机制。
 4. 素读者读前不可见任何判据（agent 定义里后测题不得在读前展示——SKILL.md 编排时分两步发给它）。
 5. ABSTAIN 转人工；席11 发现一律人工仲裁（不自动放行也不自动阻断）。
 6. 分发包内不得含任何真实传主数据；anchors 必须纯合成。

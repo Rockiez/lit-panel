@@ -60,8 +60,8 @@ Stage 1 · Mutual-Blind Parallel Review —— 11 seats read independently in ph
                                           applying dedicated criteria (Seat 08 executes strict 2-step blind protocol)
         │
         ▼
-Stage 2 · Verbatim Citation Verification —— Mechanical string matching against source text for all quote spans;
-                                            Unlocated quotes invalidated instantly (anti-hallucination firewall)
+Stage 2 · Verbatim Citation Verification —— Tier 1–5 hierarchical verification engine (Exact / Normalized / Span Ellipsis / Fuzzy Alignment / Void);
+                                              Mechanical audit across all quote fields against original & source texts, invalidating hallucinations
         │
         ▼
 Stage 3 · Deterministic Rule Synthesis —— Red-line alarms / criteria vectors / qualitative bands / derived scores /
@@ -182,6 +182,8 @@ In a fresh Codex session, mount via absolute path or auto-discovery. The eleven 
 
 **Standardized Academic Report Schema**: A `/lit-review` report adheres to an invariant eight-section sequence (un-numbered headings): **Jury Synthesis (2–3 paragraphs) $\rightarrow$ Red-Line Alarms (if triggered, preceding scorecard) $\rightarrow$ Derived Scorecard (Total/Grade/Core Verdict) $\rightarrow$ Multi-Dimensional Score Table (Literary 4D + Originality Bonus + AI Cleanliness + Reader Experience + Fidelity) $\rightarrow$ Critic Commentary (prose remarks with embedded verbatim quotes) $\rightarrow$ Issue and Revision Directives $\rightarrow$ Human Arbitration Zone (prose-only divergence entries, no tables) $\rightarrow$ Evaluation Metadata Archive**. Full criteria vectors and verification logs reside in the sidecar ledger `<report_name>-details.md`.
 
+**Standalone Quote Verification Tool**: To independently audit quote authenticity in evaluation reports outside conversational sessions, execute the bundled Tier 1–5 hierarchical verification tool: `python3 scripts/verify-quotes.py quotes.json chapter.md [--source interview.md] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--max-tier 5]`.
+
 ## 5. Formal Parameter Definitions
 
 | CLI Parameter | Domain / Format | Scholarly Function & Semantic Specification |
@@ -238,7 +240,7 @@ The system formally discloses its methodological boundaries:
 ### 9.1 Empirical Validity Boundaries
 
 As of version v0.4.1, the empirical validation status of system components is categorized as follows:
-- **Empirically Verified via Live Execution**: Multi-agent mutual-blind dispatch pipelines, verbatim string verification and hallucination invalidation, `quick`/`standard` assembly, cross-family model evaluation, full fidelity auditing, veto three-tier banding, naive reader two-step inquiry.
+- **Empirically Verified via Live Execution**: Multi-agent mutual-blind dispatch pipelines, Tier 1–5 hierarchical quote verification and hallucination invalidation (Exact / Normalized / Span Ellipsis / Fuzzy Alignment / Void), `quick`/`standard` assembly, cross-family model evaluation, full fidelity auditing, veto three-tier banding, naive reader two-step inquiry.
 - **Awaiting Further Empirical Verification**: The naive reader "veto-A" anchor comparison branch under true Band A texts, Seat 10 deep task-brief parsing, multi-reader statistical pooling ($N > 1$), and extreme long-text stress testing in high-throughput production environments.
 
 ## 10. Data Privacy and Academic Ethics Statement

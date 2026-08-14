@@ -60,8 +60,8 @@ Etapa 1 · Evaluación paralela a ciegas mutua —— 11 escaños leen de forma 
                                                 aplicando sus criterios específicos (Escaño 08: protocolo estricto en 2 fases)
         │
         ▼
-Etapa 2 · Verificación textual de citas —— Cotejo mecánico de fragmentos textuales citados;
-                                          Citas no halladas invalidadas de inmediato (cortafuegos antialucinación)
+Etapa 2 · Verificación textual de citas —— Motor de verificación jerárquico Tier 1–5 (Exacto / Normalizado / Elipsis / Difuso / Inválido);
+                                          Cotejo mecánico de citas frente al texto y fuentes, invalidando alucinaciones
         │
         ▼
 Etapa 3 · Síntesis determinista por reglas —— Alarmas de línea roja / vectores de criterios / bandas cualitativas /
@@ -182,6 +182,8 @@ En una sesión limpia de Codex, cargue mediante ruta absoluta o detección autom
 
 **Esquema estandarizado del informe académico**: Un informe `/lit-review` mantiene una secuencia invariable de ocho secciones (encabezados sin numerar): **Síntesis del jurado (2–3 párrafos) $\rightarrow$ Alarmas de línea roja (preceden al panel de puntuación si se activan) $\rightarrow$ Panel de puntuación derivada (Total/Grado/Veredicto) $\rightarrow$ Tabla de puntuación multidimensional (4D literaria + Bonificación originalidad + Limpieza IA + Experiencia lector + Fidelidad) $\rightarrow$ Comentarios críticos razonados (prosa crítica con citas textuales insertadas) $\rightarrow$ Directivas de revisión y problemas $\rightarrow$ Zona de arbitraje humano (discrepancias en prosa pura, sin tablas) $\rightarrow$ Archivo de metadatos**. Todos los vectores de criterios y registros de verificación se conservan en el archivo anexo `<nombre_informe>-details.md`.
 
+**Herramienta de verificación de citas independiente**: Para auditar de forma autónoma la autenticidad de las citas fuera de las sesiones, ejecute el script de verificación jerárquico Tier 1–5 incluido: `python3 scripts/verify-quotes.py quotes.json capitulo.md [--source entrevista.md] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--max-tier 5]`.
+
 ## 5. Definiciones formales de parámetros
 
 | Parámetro CLI | Dominio / Formato | Función académica & Especificación semántica |
@@ -238,7 +240,7 @@ El sistema expone transparentemente sus fronteras metodológicas:
 ### 9.1 Fronteras de validez empírica
 
 En el estado de la versión v0.4.1, la validación empírica de los módulos se clasifica de la siguiente manera:
-- **Validados empíricamente en ejecución real**: Canal de distribución a ciegas mutua, detección de citas e invalidación de alucinaciones, configuraciones `quick`/`standard`, evaluación cruzada entre modelos, auditoría completa de fidelidad, asignación de bandas por veto, protocolo en 2 fases del lector ingenuo.
+- **Validados empíricamente en ejecución real**: Canal de distribución a ciegas mutua, verificación jerárquica de citas Tier 1–5 e invalidación de alucinaciones (Exacto / Normalizado / Elipsis / Difuso / Inválido), configuraciones `quick`/`standard`, evaluación cruzada entre modelos, auditoría completa de fidelidad, asignación de bandas por veto, protocolo en 2 fases del lector ingenuo.
 - **Pendientes de validaciones empíricas complementarias**: Rama de comparación de textura para textos excepcionales que alcancen la Banda A frente a la alarma del lector ingenuo, análisis profundo de encargos complejos para el Escaño 10, agregación estadística multilector ($N > 1$) y pruebas de estrés con textos extremadamente largos en entornos de alta producción.
 
 ## 10. Declaración de privacidad de datos y ética académica

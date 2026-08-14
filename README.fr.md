@@ -60,8 +60,8 @@ Flux d'entrée : Texte cible + Optionnel --source (Documents sources) / --brief 
                                                 appliquant leurs critères dédiés (Siège 08 : protocole strict en 2 temps)
         │
         ▼
-Étape 2 · Vérification textuelle des citations —— Rapprochement mécanique des extraits de texte cités ;
-                                                 Citations introuvables invalidées immédiatement (pare-feu anti-hallucination)
+Étape 2 · Vérification textuelle des citations —— Moteur de vérification hiérarchique Tier 1–5 (Exact / Normalisé / Ellipse / Flou / Invalide) ;
+                                                  Audit mécanique sur tous les champs quote vis-à-vis du texte et des sources, invalidant les hallucinations
         │
         ▼
 Étape 3 · Synthèse déterministe par règles —— Alertes ligne rouge / vecteurs de critères / bandes qualitatives /
@@ -182,6 +182,8 @@ Dans une nouvelle session Codex, chargez via le chemin absolu ou par découverte
 
 **Schéma normalisé du rapport académique** : Un rapport `/lit-review` respecte une séquence stricte en huit sections (titres non numérotés) : **Synthèse du jury (2–3 paragraphes) $\rightarrow$ Alertes ligne rouge (en amont de la carte des scores si déclenchées) $\rightarrow$ Carte des scores dérivés (Total/Grade/Verdict) $\rightarrow$ Tableau des scores multidimensionnels (4D littéraire + Bonus originalité + Pureté IA + Expérience lecteur + Fidélité) $\rightarrow$ Commentaires critiques individualisés (remarques rédigées avec citations intégrées) $\rightarrow$ Directives de révision et problèmes $\rightarrow$ Zone d'arbitrage humain (divergences en prose pure, sans tableaux) $\rightarrow$ Archive des métadonnées**. L'intégralité des vecteurs de critères et des journaux de vérification figure dans le fichier annexe `<nom_rapport>-details.md`.
 
+**Outil de vérification autonome des citations** : Pour auditer de façon indépendante l'authenticité des citations hors session, exécutez le script d'audit hiérarchique Tier 1–5 inclus : `python3 scripts/verify-quotes.py quotes.json chapitre.md [--source entretien.md] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--max-tier 5]`.
+
 ## 5. Définitions formelles des paramètres
 
 | Paramètre CLI | Domaine / Format | Fonction académique & Spécification sémantique |
@@ -238,7 +240,7 @@ Le système expose en toute transparence ses limites méthodologiques :
 ### 9.1 Frontières de validité empirique
 
 Au stade de la version v0.4.1, la validation empirique des modules s'établit comme suit :
-- **Validé empiriquement en exécution réelle** : Pipeline de distribution en double aveugle, détection des citations et invalidation des hallucinations, configurations `quick`/`standard`, évaluation croisée multi-modèles, audit intégral de fidélité, déclinaison des bandes par veto, protocole en 2 étapes du lecteur naïf.
+- **Validé empiriquement en exécution réelle** : Pipeline de distribution en double aveugle, vérification hiérarchique des citations Tier 1–5 et invalidation des hallucinations (Exact / Normalisé / Ellipse / Flou / Invalide), configurations `quick`/`standard`, évaluation croisée multi-modèles, audit intégral de fidélité, déclinaison des bandes par veto, protocole en 2 étapes du lecteur naïf.
 - **En attente de validations empiriques complémentaires** : Branche de comparaison de texture pour les textes exceptionnels atteignant la Bande A face à l'alarme du lecteur naïf, analyse approfondie de mandats complexes pour le Siège 10, agrégation statistique multi-lecteurs ($N > 1$) et tests de charge sur textes très longs en environnement de production intense.
 
 ## 10. Déclaration sur la confidentialité des données et l'éthique académique

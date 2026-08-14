@@ -261,6 +261,7 @@ def test_tier_4(reporter: TestReporter):
         key_paths = [
             "skills/lit-panel/SKILL.md",
             "docs/DESIGN.md",
+            "scripts/install-antigravity.sh",
             "scripts/install-codex.sh",
             ".claude-plugin/marketplace.json",
             "docs/criteria-pool.md",

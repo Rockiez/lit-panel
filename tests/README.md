@@ -21,14 +21,20 @@ lit-panel 的测试证据分两类：
 
 `tests/runs/` 存放每次真机测试的原始产出——评审报告、摩擦日志、判据核验中间数据。这些文件通常会引用 `tests/fixtures/` 里的真实素材原文（作为逐字引文），因此同样不适合公开分发；即使不直接含隐私内容，这类运行产物本质上是过程记录而非交付物，留在本地供追溯即可，不需要随仓库版本控制。
 
-## 关于 `scripts/verify-quotes.py`
+## 关于 `scripts/verify-quotes.py` 与单元测试
 
 `tests/runs/` 下的核验脚本（如 `verify_quotes.py`）是历次测试过程中就地编写的一次性工具，其输入数据可能引用了 `tests/fixtures/` 的真实内容，因此**这些脚本本身留在 `tests/runs/` 原地，不随包分发、不做改动**。
 
-如果你想在自己的评审报告上做同样的机械核验复核，使用随包分发的通用版本 `scripts/verify-quotes.py`——它是同一套核验算法的独立实现，不含任何真实引文数据，所有输入（被评文本、来源素材、待核验的引文列表）都通过命令行参数传入：
+如果你想在自己的评审报告上做同样的机械核验复核，使用随包分发的通用版本 `scripts/verify-quotes.py`——它搭载了完整的 Tier 1–5 分层核验引擎（Tier 1 Exact、Tier 2 Normalized、Tier 3 Span Ellipsis、Tier 4 Fuzzy Alignment、Tier 5 Void），不含任何真实引文数据，所有输入（被评文本、来源素材、待核验的引文列表）都通过命令行参数传入：
 
 ```bash
-python3 scripts/verify-quotes.py <quotes.json> <被评文本路径> [--source <来源素材路径或目录>] [--format text|markdown]
+python3 scripts/verify-quotes.py <quotes.json> <被评文本路径> [--source <来源素材路径或目录>] [--format text|markdown|json] [--fuzzy-threshold 0.85] [--max-tier 5]
+```
+
+单元测试套件位于 `tests/test_verify_quotes.py`，可通过以下命令执行完整回归测试：
+
+```bash
+python3 -m unittest tests/test_verify_quotes.py
 ```
 
 `quotes.json` 的格式与调用示例见脚本文件头部的 docstring。

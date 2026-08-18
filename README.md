@@ -1,8 +1,8 @@
 [简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)
 
-# lit-panel 0.5.1
+# lit-panel 0.5.2
 
-面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废与质性 A/B/C/N/A 带位派生。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
+面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废、质性 A/B/C/N/A 带位与确定性的 0-100 评分视图。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
 
 ## 支持矩阵
 
@@ -66,6 +66,17 @@ prepare_run.py → run.json + 逐席互盲 packets
 
 只有 `native_subagents=true`、`degraded=false`、派发和判据输出完整、席 08 证明完整、输入摘要与核验回执一致且 `coverage_gaps=[]` 时，`derive_report.py` 才生成 `formal=true` 的正式带位。任何降级、失败/非隔离派发、未披露缺件或引文作废都会 fail closed：结果为诊断，`bands.fidelity=null`、`bands.literary=null`、建议为“仅诊断”。这与正式运行因未覆盖某一维度而得到的 N/A 不同。
 
+## 恢复的评分视图（0.5.2）
+
+0.5.2 把 v0.4.1 的确定性评分公式接回 0.5 的闭合运行时。评审席仍然零打分：它们只提交判据向量；只有 `derive_report.py` 可以在正式闭合且完整覆盖 03/04/05/06/07/08/09 时生成 `derived-report.json.scores`。不完整、降级或诊断运行的 `scores.available=false`，总分与各维度均为 `null`。
+
+- 结构、人物、语言、情感从 90 分起，普通 core 问题每项扣 12，extended 每项扣 5；高严重度 veto 封顶 45，中低严重度 veto 封顶 65。
+- AI 洁净度从 100 分起，每个有效 AI 痕迹问题扣 3，最多扣 10；读者体验从 85 分起，每个 R 系问题扣 10。
+- 原创性只加不减：O2/O3/O5/O6 全部通过且无 O 系问题加 5，至少三项通过且无 O 系问题加 3，否则加 0。
+- 总分是四个文学维度均值减 AI 扣分再加原创性奖励，封顶 100；若提供 source，忠实度 B/C 最后分别把总分封顶为 75/45。
+
+分档为 A（90–100）、A-（85–89）、B+（80–84）、B（70–79）、C+（60–69）、C（45–59）、D（0–44）。**分数由判据向量机械导出，评审席不产生任何数字。**
+
 ## 闭合运行命令
 
 ```bash
@@ -94,10 +105,10 @@ python3 core/lit-panel/scripts/derive_report.py \
 - `execution-receipt.json`：宿主、原生隔离、packet 派发、席 08 两步与覆盖缺口证明；
 - 每席 `seat-output.schema.json` 对应的 JSON；
 - `verification-receipt.json`：逐条 quote 的命中/作废回执；
-- `derived-report.json`：冻结规则机械派生的带位、红线、修订和仲裁；
+- `derived-report.json`：冻结规则机械派生的带位、`scores`、红线、修订和仲裁；
 - `report.md`：面向人的正式评审或明确标记的诊断投影。
 
-项目禁止聚合数值总分、百分比和加权分。A/B/C/N/A 是正式运行中的质性带位，不是伪精确分数；作废判定不仅不能进入合成，还会使该轮失去正式闭合资格。
+项目禁止评审席直接打分、主观百分比和自由加权；只允许闭合脚本按 v0.4.1 公式导出可复算的 0-100 `scores`。A/B/C/N/A 仍是独立的质性带位；作废判定不仅不能进入合成，还会使该轮失去正式闭合资格。
 
 ## 架构
 

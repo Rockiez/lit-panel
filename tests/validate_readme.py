@@ -11,7 +11,10 @@ FILES = ("README.md", "README.en.md", "README.fr.md", "README.es.md")
 NAV = "[简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)"
 
 REQUIRED_LITERAL = (
-    "0.5.1",
+    "0.5.2",
+    "0.4.1",
+    "0-100",
+    "scores",
     "Codex",
     "0.147.0",
     "Claude Code",
@@ -35,9 +38,10 @@ FORBIDDEN = (
     "Codex sequential path",
     "Codex 顺序路径",
     "Subagents` array",
-    "derived score adjustments",
-    "puntuaciones multidimensionales",
-    "scores multidimensionnels",
+    "禁止聚合数值总分",
+    "never an aggregate numeric score",
+    "aucun score numérique agrégé",
+    "nunca una puntuación numérica agregada",
 )
 
 
@@ -66,7 +70,7 @@ def main() -> int:
         for failure in failures:
             print(f"- {failure}", file=sys.stderr)
         return 1
-    print("README VALIDATION PASSED: versions, native subagents, seat 08, qualitative output")
+    print("README VALIDATION PASSED: versions, native subagents, seat 08, restored score view")
     return 0
 
 

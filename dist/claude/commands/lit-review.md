@@ -36,4 +36,4 @@ $ARGUMENTS
 
 ## 执行纪律
 
-互盲依赖真实独立 Agent 上下文；宿主必须保存 `run.json`、执行回执与引文核验回执。只有原生 subagent 覆盖闭合、无降级和无 coverage gap 时才能形成正式带位；否则只能输出 bands 为空的诊断结果。逐字引证、schema 校验、核验失败作废、禁止聚合数值评分和席11发现转人工等纪律均由 `skills/lit-panel/SKILL.md` 定义并执行。本命令不重复定义。
+互盲依赖真实独立 Agent 上下文；宿主必须保存 `run.json`、执行回执与引文核验回执。只有原生 subagent 覆盖闭合、无降级和无 coverage gap 时才能形成正式带位；否则只能输出 bands 与 scores 为空的诊断结果。逐字引证、schema 校验、核验失败作废、评审席零打分、评分仅由闭合脚本从判据向量机械导出，以及席11发现转人工等纪律均由 `skills/lit-panel/SKILL.md` 定义并执行。本命令不重复定义。

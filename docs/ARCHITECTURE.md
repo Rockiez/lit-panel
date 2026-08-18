@@ -50,10 +50,11 @@ derive_report.py
   ├─ 重算 text/source/brief 摘要与引文回执
   ├─ 关联 run、packet、dispatch、席位、reader、phase、criterion
   ├─ 闭合且非降级 → formal=true + A/B/C/N/A 带位
-  └─ 任一缺口/降级 → formal=false + bands=null + 仅诊断
+  ├─ 正式且完整覆盖评分席 → scores.available=true + 0-100 评分视图
+  └─ 任一缺口/降级 → formal=false + bands=null + scores.available=false + 仅诊断
 ```
 
-机械脚本是唯一合成 owner。宿主 prompt 不能自由补齐缺失回执、修复引文或生成正式带位。
+机械脚本是唯一合成 owner，也是唯一评分 owner。宿主 prompt 不能自由补齐缺失回执、修复引文、生成正式带位或直接给分；`scores` 只能由 `derive_report.py` 按 v0.4.1 冻结公式导出。
 
 ## 运行清单语义
 
@@ -90,6 +91,8 @@ python3 core/lit-panel/scripts/prepare_run.py <text> \
 正式报告要求同时满足：原生 subagent、所有派发隔离且完成、执行未降级、期望输出和判据完整、席 08 证明完整、输入摘要与引文回执一致、无引文作废、无 coverage gap。
 
 `N/A` 是正式闭合运行中某个带位维度未在 preset/输入范围内；`null` 是运行证据未闭合或明确降级，不能形成任何正式带位。两者不得互换。
+
+评分视图比带位要求更完整的覆盖：必须包含 03、04、05、06、07、08、09。正式但未覆盖这些席位的 custom/quick 运行可以形成其适用的质性带位，但 `scores.available=false`；降级或不闭合运行同样不得出分。忠实度维度只在提供 source 并覆盖席 01 时出现，无 source 不妨碍其他评分维度形成。
 
 ## 变更原则
 

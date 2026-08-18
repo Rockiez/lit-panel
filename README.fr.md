@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La version 0.5.1 est un plugin de critique littéraire à onze sièges pour les mémoires et les récits en chinois. Chaque siège s’exécute dans un contexte de subagent réel et isolé. Les sièges rendent des jugements structurés accompagnés de citations littérales ; des scripts ferment la chaîne d’exécution, valident les schémas, invalident les citations non vérifiables et dérivent une bande qualitative A/B/C/N/A. Agent Plugins est la voie d’installation et de découverte de premier rang avec Codex CLI 0.147.0 ou version ultérieure.
+La version 0.5.2 est un plugin de critique littéraire à onze sièges pour les mémoires et les récits en chinois. Chaque siège s’exécute dans un contexte de subagent réel et isolé. Les sièges rendent des jugements structurés accompagnés de citations littérales ; des scripts ferment la chaîne d’exécution, valident les schémas, invalident les citations non vérifiables et dérivent des bandes qualitatives A/B/C/N/A ainsi qu’une vue de score déterministe de 0-100. Agent Plugins est la voie d’installation et de découverte de premier rang avec Codex CLI 0.147.0 ou version ultérieure.
 
 ## Matrice de compatibilité
 
@@ -68,6 +68,12 @@ Chaque lecteur `lit-naive-reader` suit un protocole strict en deux étapes. L’
 
 `derive_report.py` ne produit `formal=true` que si les subagents natifs sont prouvés, `degraded=false`, tous les dispatchs, sorties et preuves du Siège 08 sont complets, les empreintes d’entrée et reçus concordent, et `coverage_gaps=[]`. Toute dégradation, dispatch en échec ou non isolé, ressource manquante ou citation invalidée donne un diagnostic avec `bands.fidelity=null`, `bands.literary=null` et la recommandation `仅诊断`. Ce `null` de diagnostic diffère du N/A formel d’une dimension légitimement hors périmètre.
 
+## Vue de score restaurée (0.5.2)
+
+La version 0.5.2 restaure la formule déterministe v0.4.1 dans l’exécution fermée 0.5. Les sièges n’attribuent toujours aucun nombre : ils rendent uniquement des vecteurs de critères. Seul `derive_report.py` peut produire `derived-report.json.scores`, et seulement pour une exécution formellement close couvrant entièrement les sièges 03/04/05/06/07/08/09. Pour une exécution incomplète, dégradée ou diagnostique, `scores.available=false` et le total comme les dimensions valent `null`.
+
+Les quatre dimensions littéraires partent de 90, avec retraits mécaniques pour les problèmes core/extended et plafonds veto. La propreté IA part de 100, l’expérience lecteur de 85, et l’originalité ajoute +5, +3 ou +0 sans jamais retrancher. Le total combine ces résultats, avec un plafond final de fidélité à 75 pour B et 45 pour C lorsque la source est fournie. Les classes de la vue 0-100 vont de A à D. **Les scores sont mécaniquement dérivés des vecteurs de critères ; les sièges ne produisent aucun nombre.**
+
 ## Commandes d’une exécution fermée
 
 ```bash
@@ -96,10 +102,10 @@ Une exécution fermée conserve au moins six catégories d’artefacts :
 - `execution-receipt.json`, qui prouve isolation native, dispatchs, deux étapes du Siège 08 et manques de couverture ;
 - un JSON par siège conforme à `seat-output.schema.json` ;
 - `verification-receipt.json`, qui consigne chaque correspondance ou invalidation de citation ;
-- `derived-report.json`, avec bandes, lignes rouges, révisions et éléments d’arbitrage dérivés mécaniquement ;
+- `derived-report.json`, avec bandes, `scores`, lignes rouges, révisions et éléments d’arbitrage dérivés mécaniquement ;
 - `report.md`, soit la critique formelle destinée au lecteur, soit une projection explicitement diagnostique.
 
-Chaque jugement YES/NO exige une citation littérale. La validation du schéma et la vérification mécanique précèdent la synthèse ; l’échec d’une citation invalide le critère entier, empêche la fermeture formelle de cette exécution et ne peut influencer une bande formelle. Le projet n’autorise que les bandes qualitatives A/B/C/N/A : aucun score numérique agrégé, pourcentage ou total pondéré.
+Chaque jugement YES/NO exige une citation littérale. La validation du schéma et la vérification mécanique précèdent la synthèse ; l’échec d’une citation invalide le critère entier, empêche la fermeture formelle de cette exécution et ne peut influencer une bande formelle. Les sièges ne peuvent attribuer ni score, ni pourcentage, ni pondération libre ; seul le script fermé peut dériver des `scores` 0-100 reproductibles avec la formule v0.4.1. A/B/C/N/A reste une vue qualitative indépendante.
 
 ## Architecture
 

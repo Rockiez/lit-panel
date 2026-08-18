@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "lit-panel",
-  "version": "0.5.1",
-  "description": "Evidence-grounded multi-agent literary review for Chinese memoir and narrative text.",
+  "version": "0.5.2",
+  "description": "Evidence-grounded multi-agent literary review with deterministic scoring for Chinese memoir and narrative text.",
   "author": {
     "name": "Anamnese"
   },

@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La versión 0.5.1 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan una banda cualitativa A/B/C/N/A. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
+La versión 0.5.2 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan bandas cualitativas A/B/C/N/A junto con una vista de puntuación determinista de 0-100. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
 
 ## Matriz de compatibilidad
 
@@ -68,6 +68,12 @@ Cada lector `lit-naive-reader` sigue un protocolo estricto de dos pasos. El paso
 
 `derive_report.py` solo produce `formal=true` cuando se prueban subagentes nativos, `degraded=false`, están completos todos los despachos, salidas y pruebas del Escaño 08, coinciden los digests de entrada y los recibos, y `coverage_gaps=[]`. Toda degradación, despacho fallido o no aislado, artefacto ausente o cita invalidada produce un diagnóstico con `bands.fidelity=null`, `bands.literary=null` y recomendación `仅诊断`. Este `null` diagnóstico es distinto del N/A formal de una dimensión legítimamente fuera de alcance.
 
+## Vista de puntuación restaurada (0.5.2)
+
+La versión 0.5.2 restaura la fórmula determinista v0.4.1 dentro del runtime cerrado 0.5. Los escaños siguen sin asignar números: solo entregan vectores de criterios. Únicamente `derive_report.py` puede producir `derived-report.json.scores`, y solo en una ejecución formalmente cerrada que cubra por completo los escaños 03/04/05/06/07/08/09. En ejecuciones incompletas, degradadas o diagnósticas, `scores.available=false` y el total y las dimensiones son `null`.
+
+Las cuatro dimensiones literarias parten de 90, con deducciones mecánicas para problemas core/extended y topes veto. La limpieza de IA parte de 100, la experiencia lectora de 85 y la originalidad suma +5, +3 o +0 sin restar. El total combina estos resultados, con un tope final de fidelidad de 75 para B y 45 para C cuando existe fuente. Las calificaciones de la vista 0-100 van de A a D. **Las puntuaciones se derivan mecánicamente de los vectores de criterios; los escaños nunca producen números.**
+
 ## Comandos de una ejecución cerrada
 
 ```bash
@@ -96,10 +102,10 @@ Una ejecución cerrada conserva al menos seis clases de artefactos:
 - `execution-receipt.json`, que prueba aislamiento nativo, despachos, los dos pasos del Escaño 08 y brechas de cobertura;
 - un JSON por escaño conforme a `seat-output.schema.json`;
 - `verification-receipt.json`, que registra cada coincidencia o invalidación de cita;
-- `derived-report.json`, con bandas, líneas rojas, revisiones y elementos de arbitraje derivados mecánicamente;
+- `derived-report.json`, con bandas, `scores`, líneas rojas, revisiones y elementos de arbitraje derivados mecánicamente;
 - `report.md`, la crítica formal destinada a personas o una proyección marcada explícitamente como diagnóstico.
 
-Todo dictamen YES/NO exige una cita literal. La validación del esquema y la verificación mecánica preceden a la síntesis; una cita fallida invalida el criterio completo, impide el cierre formal de esa ejecución y no puede influir en una banda formal. El proyecto solo permite bandas cualitativas A/B/C/N/A: nunca una puntuación numérica agregada, porcentaje o total ponderado.
+Todo dictamen YES/NO exige una cita literal. La validación del esquema y la verificación mecánica preceden a la síntesis; una cita fallida invalida el criterio completo, impide el cierre formal de esa ejecución y no puede influir en una banda formal. Los escaños no pueden asignar puntuaciones, porcentajes ni pesos libres; solo el script cerrado puede derivar `scores` reproducibles de 0-100 con la fórmula v0.4.1. A/B/C/N/A sigue siendo una vista cualitativa independiente.
 
 ## Arquitectura
 

@@ -27,6 +27,14 @@ from lit_panel_common import (
 from prepare_run import build_packet_payloads, has_cross_chapter_source, parse_registry, plan_run
 
 LITERARY_SEATS = {"lit-structure", "lit-character", "lit-prose", "lit-resonance"}
+SCORING_SEATS = LITERARY_SEATS | {"lit-slop", "lit-naive-reader", "lit-originality"}
+LITERARY_DIMENSIONS = {
+    "structure": "lit-structure",
+    "character": "lit-character",
+    "prose": "lit-prose",
+    "resonance": "lit-resonance",
+}
+SCORE_FORMULA_VERSION = "0.4.1-closed"
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 3}
 
 
@@ -181,6 +189,151 @@ def recommendation(fidelity: str, literary: str) -> str:
     return "修订后交付"
 
 
+def normalized_score(value: float) -> int | float:
+    rounded = float(round(max(0.0, min(100.0, value)), 2))
+    return int(rounded) if rounded.is_integer() else rounded
+
+
+def score_grade(value: int | float) -> str:
+    if value >= 90:
+        return "A"
+    if value >= 85:
+        return "A-"
+    if value >= 80:
+        return "B+"
+    if value >= 70:
+        return "B"
+    if value >= 60:
+        return "C+"
+    if value >= 45:
+        return "C"
+    return "D"
+
+
+def scored_dimension(
+    seat: str,
+    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+) -> dict[str, int | float | str]:
+    rows = [row for row in valid if row[0]["seat"] == seat]
+    problems = [row for row in rows if is_problem(row[2]["polarity"], row[1]["verdict"])]
+    value = 90
+    cap = 100
+    for _, criterion, metadata in problems:
+        if metadata["tier"] == "veto":
+            cap = min(cap, 45 if criterion["severity"] == "high" else 65)
+        elif metadata["tier"] == "core":
+            value -= 12
+        elif metadata["tier"] == "extended":
+            value -= 5
+    score = normalized_score(min(value, cap))
+    return {"score": score, "grade": score_grade(score)}
+
+
+def originality_bonus(
+    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+) -> int:
+    rows = [row for row in valid if row[0]["seat"] == "lit-originality"]
+    if any(is_problem(row[2]["polarity"], row[1]["verdict"]) for row in rows):
+        return 0
+    positive_ids = {"O2", "O3", "O5", "O6"}
+    positive_yes = {
+        criterion["id"]
+        for _, criterion, _ in rows
+        if criterion["id"] in positive_ids and criterion["verdict"] == "YES"
+    }
+    if positive_yes == positive_ids:
+        return 5
+    return 3 if len(positive_yes) >= 3 else 0
+
+
+def derive_scores(
+    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+    outputs: list[dict[str, Any]],
+    *,
+    formal: bool,
+    fidelity: str | None,
+    reader_warning: bool,
+) -> dict[str, Any]:
+    covered_seats = {output["seat"] for output in outputs}
+    dimensions: dict[str, dict[str, int | float | str] | None] = {
+        "structure": None,
+        "character": None,
+        "prose": None,
+        "resonance": None,
+        "ai_cleanliness": None,
+        "reader_experience": None,
+        "fidelity": None,
+    }
+    available = formal and SCORING_SEATS.issubset(covered_seats)
+    if not available:
+        return {
+            "available": False,
+            "formula_version": SCORE_FORMULA_VERSION,
+            "total": None,
+            "grade": None,
+            "originality_bonus": None,
+            "reader_warning": reader_warning,
+            "dimensions": dimensions,
+        }
+
+    for dimension, seat in LITERARY_DIMENSIONS.items():
+        dimensions[dimension] = scored_dimension(seat, valid)
+
+    slop_problems = sum(
+        output["seat"] == "lit-slop"
+        and is_problem(metadata["polarity"], criterion["verdict"])
+        for output, criterion, metadata in valid
+    )
+    slop_penalty = min(10, slop_problems * 3)
+    ai_score = normalized_score(100 - slop_penalty)
+    dimensions["ai_cleanliness"] = {"score": ai_score, "grade": score_grade(ai_score)}
+
+    reader_scores: list[int | float] = []
+    for output in outputs:
+        if output["seat"] != "lit-naive-reader":
+            continue
+        problems = sum(
+            row_output is output
+            and is_problem(metadata["polarity"], criterion["verdict"])
+            for row_output, criterion, metadata in valid
+        )
+        reader_scores.append(normalized_score(85 - problems * 10))
+    reader_score = normalized_score(sum(reader_scores) / len(reader_scores))
+    dimensions["reader_experience"] = {
+        "score": reader_score,
+        "grade": score_grade(reader_score),
+    }
+
+    if fidelity in {"A", "B", "C"}:
+        fidelity_score = {"A": 90, "B": 65, "C": 45}[fidelity]
+        dimensions["fidelity"] = {
+            "score": fidelity_score,
+            "grade": score_grade(fidelity_score),
+        }
+
+    bonus = originality_bonus(valid)
+    literary_scores = [
+        dimensions[name]["score"]
+        for name in LITERARY_DIMENSIONS
+        if dimensions[name] is not None
+    ]
+    total = sum(literary_scores) / len(literary_scores) - slop_penalty + bonus
+    if fidelity == "C":
+        total = min(total, 45)
+    elif fidelity == "B":
+        total = min(total, 75)
+    total_score = normalized_score(total)
+    return {
+        "available": True,
+        "formula_version": SCORE_FORMULA_VERSION,
+        "total": total_score,
+        "grade": score_grade(total_score),
+        "originality_bonus": bonus,
+        "reader_warning": reader_warning,
+        "dimensions": dimensions,
+    }
+
+
 def display_finding(item: dict[str, Any]) -> str:
     identity = item["seat"] + (f"@{item['reader_id']}" if item.get("reader_id") else "")
     return f"{identity} / {item['criterion_id']}：{item['reason']}"
@@ -202,9 +355,48 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- 决策建议：{report['recommendation']}",
         f"- 引文核验：通过 {report['verification']['verified']}，作废 {report['verification']['invalidated']}",
         "",
-        "## 覆盖与降级披露",
+        "## 总分卡",
         "",
     ]
+    scores = report["scores"]
+    if scores["available"]:
+        warning = " ⚠ 读者预警" if scores["reader_warning"] else ""
+        lines.extend([
+            f"**{scores['total']}/100 · {scores['grade']}{warning}**",
+            "",
+            "分数由判据向量机械导出，评审席不产生任何数字。",
+            "",
+            "## 多维评分",
+            "",
+            "| 维度 | 分数 | 等级 |",
+            "|---|---:|---|",
+        ])
+        labels = {
+            "fidelity": "忠实度",
+            "structure": "结构",
+            "character": "人物",
+            "prose": "语言",
+            "resonance": "情感",
+            "ai_cleanliness": "AI 洁净度",
+            "reader_experience": "读者体验",
+        }
+        for key in (
+            "fidelity", "structure", "character", "prose", "resonance",
+            "ai_cleanliness", "reader_experience",
+        ):
+            dimension = scores["dimensions"][key]
+            if dimension is not None:
+                lines.append(
+                    f"| {labels[key]} | {dimension['score']} | {dimension['grade']} |"
+                )
+        lines.append(f"| 原创加分 | +{scores['originality_bonus']} | — |")
+    else:
+        lines.extend([
+            "未形成：数值视图只在运行正式闭合且覆盖席 03/04/05/06/07/08/09 时生成。",
+            "",
+            "分数由判据向量机械导出，评审席不产生任何数字。",
+        ])
+    lines.extend(["", "## 覆盖与降级披露", ""])
     lines.extend([f"- {gap}" for gap in report["coverage_gaps"]] or ["- 无"])
     lines.extend(["", "### 跳过席位", ""])
     lines.extend(
@@ -483,8 +675,16 @@ def main() -> int:
         literary = None
         final_recommendation = "仅诊断"
 
+    scores = derive_scores(
+        valid,
+        outputs,
+        formal=formal,
+        fidelity=fidelity,
+        reader_warning=bool(naive_unwilling_outputs),
+    )
+
     report = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_id": run_id,
         "formal": formal,
         "run": {
@@ -506,6 +706,7 @@ def main() -> int:
         },
         "coverage_gaps": coverage_gaps,
         "bands": {"fidelity": fidelity, "literary": literary},
+        "scores": scores,
         "recommendation": final_recommendation,
         "red_flags": red_flags,
         "revisions": revisions,

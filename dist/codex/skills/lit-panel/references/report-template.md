@@ -1,6 +1,6 @@
 # lit-panel 评审报告
 
-> 本模板是 `scripts/derive_report.py` 产出的可读结构参考。报告事实以 `run.json`、`execution-receipt.json`、`derived-report.json`、席位 JSON 与核验回执为准；禁止填入聚合数值分数。只有证据链闭合且非降级时才能标作正式评审。
+> 本模板是 `scripts/derive_report.py` 产出的可读结构参考。报告事实以 `run.json`、`execution-receipt.json`、`derived-report.json`、席位 JSON 与核验回执为准；数值只能来自 `derived-report.json.scores`，不得由评审席或编排层自由填写。只有证据链闭合且非降级时才能标作正式评审与评分。
 
 ## 评审档案
 
@@ -25,6 +25,30 @@
 - 决策建议：`[交付/修订后交付/重写建议/仅诊断/待人工确认]`
 
 > `N/A` 只用于正式闭合运行中未覆盖的带位维度；证据未闭合或 `degraded=true` 时，两个 band 必须为 `null`，不得写成 N/A。
+
+## 总分卡
+
+- 评分可用：`[true/false]`
+- 总分：`[0-100；不可用时写“未形成”，底层值为 null]`
+- 等级：`[A/A-/B+/B/C+/C/D；不可用时写“未形成”]`
+- 原创加分：`[+5/+3/+0；不可用时写“未形成”]`
+- 读者预警：`[是/否]`
+
+> 分数由判据向量机械导出，评审席不产生任何数字。
+
+## 多维评分
+
+| 维度 | 分数 | 等级 |
+|---|---:|---|
+| 忠实度（有 source 时） | `[0-100/null]` | `[A-D/null]` |
+| 结构 | `[0-100/null]` | `[A-D/null]` |
+| 人物 | `[0-100/null]` | `[A-D/null]` |
+| 语言 | `[0-100/null]` | `[A-D/null]` |
+| 情感 | `[0-100/null]` | `[A-D/null]` |
+| AI 洁净度 | `[0-100/null]` | `[A-D/null]` |
+| 读者体验 | `[0-100/null]` | `[A-D/null]` |
+
+诊断或覆盖不完整时，`scores.available=false`，本节只显示“未形成”，不得用估算值补齐。
 
 ## 总评
 

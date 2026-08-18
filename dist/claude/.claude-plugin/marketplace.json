@@ -5,12 +5,12 @@
   },
   "metadata": {
     "description": "lit-panel 自托管插件市场——从仓库内已提交的 Claude 专用分发包安装，不要求用户本地构建",
-    "version": "0.5.1"
+    "version": "0.5.2"
   },
   "plugins": [
     {
       "name": "lit-panel",
-      "description": "文学评审团：十一席原生 Agent 并行互盲评审，以 schema、逐字核验和质性带位形成可复现证据链",
+      "description": "文学评审团：十一席原生 Agent 并行互盲评审，以 schema、逐字核验、质性带位和机械评分形成可复现证据链",
       "author": {
         "name": "Anamnese"
       },

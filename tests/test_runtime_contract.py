@@ -369,6 +369,117 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["bands"]["literary"], "A")
             self.assertEqual(result["recommendation"], "交付")
 
+    def test_complete_standard_chain_derives_restored_scorecard(self) -> None:
+        """Break caught: a formal standard run drops the v0.4.1 score view again."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(root, manifest)
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+            self.assertEqual(result["schema_version"], "1.1")
+            self.assertEqual(
+                result["scores"],
+                {
+                    "available": True,
+                    "formula_version": "0.4.1-closed",
+                    "total": 95,
+                    "grade": "A",
+                    "originality_bonus": 5,
+                    "reader_warning": False,
+                    "dimensions": {
+                        "structure": {"score": 90, "grade": "A"},
+                        "character": {"score": 90, "grade": "A"},
+                        "prose": {"score": 90, "grade": "A"},
+                        "resonance": {"score": 90, "grade": "A"},
+                        "ai_cleanliness": {"score": 100, "grade": "A"},
+                        "reader_experience": {"score": 85, "grade": "A-"},
+                        "fidelity": None,
+                    },
+                },
+            )
+            markdown = (root / "report.md").read_text(encoding="utf-8")
+            self.assertIn("## 总分卡", markdown)
+            self.assertIn("**95/100 · A**", markdown)
+            self.assertIn("分数由判据向量机械导出，评审席不产生任何数字。", markdown)
+
+    def test_scorecard_deducts_an_ordinary_core_problem(self) -> None:
+        """Break caught: ordinary core failures stop reducing their literary dimension."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(root, manifest, problem=("lit-structure", "N1"))
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                result["scores"]["dimensions"]["structure"],
+                {"score": 78, "grade": "B"},
+            )
+            self.assertEqual(result["scores"]["total"], 92)
+            self.assertEqual(result["bands"]["literary"], "B")
+
+    def test_scorecard_applies_ai_penalty_without_double_counting(self) -> None:
+        """Break caught: one slop finding is omitted or charged more than once."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(root, manifest, problem=("lit-slop", "A1"))
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                result["scores"]["dimensions"]["ai_cleanliness"],
+                {"score": 97, "grade": "A"},
+            )
+            self.assertEqual(result["scores"]["total"], 92)
+
+    def test_scorecard_keeps_originality_bonus_positive_only(self) -> None:
+        """Break caught: an originality problem deducts points instead of only removing bonus."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(root, manifest, problem=("lit-originality", "O1"))
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(result["scores"]["originality_bonus"], 0)
+            self.assertEqual(result["scores"]["total"], 90)
+
+    def test_scorecard_applies_fidelity_cap_last(self) -> None:
+        """Break caught: a fidelity C no longer caps a high literary score at 45."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard", source=SOURCE)
+            seats = write_outputs(root, manifest, problem=("lit-fidelity", "F1"))
+            receipt = verify(root, seats, source=SOURCE)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(
+                    root, seats, receipt, run_dir, execution, source=SOURCE
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                result["scores"]["dimensions"]["fidelity"],
+                {"score": 45, "grade": "C"},
+            )
+            self.assertEqual(result["scores"]["total"], 45)
+            self.assertEqual(result["scores"]["grade"], "C")
+            self.assertEqual(result["recommendation"], "重写建议")
+
     def test_degraded_execution_is_diagnostic_with_null_bands(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -385,6 +496,8 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertFalse(result["formal"])
             self.assertEqual(result["bands"], {"fidelity": None, "literary": None})
             self.assertEqual(result["recommendation"], "仅诊断")
+            self.assertFalse(result["scores"]["available"])
+            self.assertIsNone(result["scores"]["total"])
 
     def test_forged_receipt_and_undisclosed_partial_criteria_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

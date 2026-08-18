@@ -1,7 +1,7 @@
 {
   "name": "lit-panel",
-  "version": "0.5.1",
-  "description": "Eleven-seat Chinese literary review using native Codex subagents, exact quote verification, and qualitative bands.",
+  "version": "0.5.2",
+  "description": "Eleven-seat Chinese literary review using native Codex subagents, exact quote verification, qualitative bands, and deterministic scores.",
   "author": {
     "name": "Anamnese"
   },

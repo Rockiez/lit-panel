@@ -4,12 +4,12 @@
 
 ## 可提交的自动化测试
 
-- `test_runtime_contract.py`：校验闭合运行清单、执行回执、互盲分发包、多素读者两步证明、逐字引文作废与正式/诊断报告闸门。
+- `test_runtime_contract.py`：校验闭合运行清单、执行回执、互盲分发包、多素读者两步证明、逐字引文作废、正式/诊断报告闸门，以及 v0.4.1 机械评分公式。
 - `test_verify_quotes.py`：冻结共享 Tier 1–5 引擎的输入契约、归一化/省略跨度、Tier 4 非通过候选、格式违约、目录来源与输出兼容性。
 - `test_compare_contract.py`：冻结 `/lit-compare` 的换序、TIE、`--fast-compare` 披露与非数值输出契约，并核对 Claude 分发命令副本。
 - `test_distributions.py`：校验 Codex、Claude Code、Antigravity 三份 `dist` 自包含且各有 11 个宿主 agent 定义。
 - `test_installers.py`：以故障注入校验原子分发切换、安装版本门禁、冲突备份、marketplace 回滚和幂等安装。
-- `validate_readme.py`：校验四语 README 的版本、宿主事实、真实 subagent 闸门、席 08 两步制与非数值输出声明。
+- `validate_readme.py`：校验四语 README 的版本、宿主事实、真实 subagent 闸门、席 08 两步制与 0-100 `scores` 合同。
 - `synthetic/`：完全虚构、可公开提交的短文本与来源素材。
 
 运行：

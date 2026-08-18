@@ -2,7 +2,7 @@
 
 # lit-panel
 
-Version 0.5.1 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive a qualitative A/B/C/N/A band. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
+Version 0.5.2 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive qualitative A/B/C/N/A bands plus a deterministic 0-100 score view. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
 
 ## Support matrix
 
@@ -68,6 +68,17 @@ Each `lit-naive-reader` follows a strict two-step protocol. Step 1 receives only
 
 `derive_report.py` emits `formal=true` only when native subagents are proven, `degraded=false`, every dispatch/output and Seat 08 proof is complete, input digests and verification receipts match, and `coverage_gaps=[]`. Any degradation, failed or non-isolated dispatch, missing artifact, or invalidated quote produces a diagnostic with `bands.fidelity=null`, `bands.literary=null`, and recommendation `仅诊断`. Diagnostic `null` is distinct from a formal N/A for a dimension that was legitimately out of scope.
 
+## Restored score view (0.5.2)
+
+Version 0.5.2 restores the v0.4.1 deterministic formula inside the 0.5 closed runtime. Review seats still assign no numbers: they only return criterion vectors. Only `derive_report.py` may populate `derived-report.json.scores`, and only for a formally closed run that completely covers Seats 03/04/05/06/07/08/09. In incomplete, degraded, or diagnostic runs, `scores.available=false` and the total and dimensions are `null`.
+
+- Structure, character, prose, and resonance start at 90. Each ordinary core problem deducts 12 and each extended problem deducts 5; a high-severity veto caps the dimension at 45, and a medium/low veto caps it at 65.
+- AI cleanliness starts at 100, deducting 3 for each valid AI-slop problem up to a total deduction of 10. Reader experience starts at 85 and deducts 10 for each R problem.
+- Originality can only add: +5 when O2/O3/O5/O6 all pass with no O problem, +3 when at least three pass with no O problem, otherwise +0.
+- The total is the mean of the four literary dimensions, minus the AI deduction, plus the originality bonus, capped at 100. When source material is present, fidelity B/C finally caps the total at 75/45.
+
+Grades are A (90–100), A- (85–89), B+ (80–84), B (70–79), C+ (60–69), C (45–59), and D (0–44). **Scores are mechanically derived from criterion vectors; review seats never produce numbers.**
+
 ## Closed-run commands
 
 ```bash
@@ -96,10 +107,10 @@ A closed run preserves at least six artifact classes:
 - `execution-receipt.json`, proving host-native isolation, packet dispatch, the Seat 08 two-step flow, and coverage gaps;
 - one JSON response per seat conforming to `seat-output.schema.json`;
 - `verification-receipt.json`, recording each quote match or invalidation;
-- `derived-report.json`, containing mechanically derived bands, red lines, revisions, and arbitration items;
+- `derived-report.json`, containing mechanically derived bands, `scores`, red lines, revisions, and arbitration items;
 - `report.md`, either the human-facing formal review or an explicitly labeled diagnostic projection.
 
-Every YES/NO judgment requires a verbatim quote. Schema validation and mechanical quote verification occur before synthesis; a failed quote invalidates the entire criterion, prevents formal closure for that run, and cannot affect a formal band. The project permits qualitative A/B/C/N/A bands only—never an aggregate numeric score, percentage, or weighted total.
+Every YES/NO judgment requires a verbatim quote. Schema validation and mechanical quote verification occur before synthesis; a failed quote invalidates the entire criterion, prevents formal closure for that run, and cannot affect a formal band. Seats may not assign scores, percentages, or free-form weights; only the closed script may derive reproducible 0-100 `scores` with the v0.4.1 formula. A/B/C/N/A remains an independent qualitative view.
 
 ## Architecture
 

@@ -4,9 +4,9 @@
   "title": "lit-panel deterministic derived report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "run_id", "formal", "run", "execution", "coverage_gaps", "bands", "recommendation", "red_flags", "revisions", "arbitration", "seat_views", "verification"],
+  "required": ["schema_version", "run_id", "formal", "run", "execution", "coverage_gaps", "bands", "scores", "recommendation", "red_flags", "revisions", "arbitration", "seat_views", "verification"],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "const": "1.1" },
     "run_id": { "type": "string", "minLength": 1 },
     "formal": { "type": "boolean" },
     "run": {
@@ -43,6 +43,73 @@
         "fidelity": { "type": ["string", "null"], "enum": ["A", "B", "C", "N/A", null] },
         "literary": { "type": ["string", "null"], "enum": ["A", "B", "C", "N/A", "A候选（待人工确认）", null] }
       }
+    },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "formula_version", "total", "grade", "originality_bonus", "reader_warning", "dimensions"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "formula_version": { "const": "0.4.1-closed" },
+        "total": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "grade": { "type": ["string", "null"], "enum": ["A", "A-", "B+", "B", "C+", "C", "D", null] },
+        "originality_bonus": { "type": ["integer", "null"], "enum": [0, 3, 5, null] },
+        "reader_warning": { "type": "boolean" },
+        "dimensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["structure", "character", "prose", "resonance", "ai_cleanliness", "reader_experience", "fidelity"],
+          "properties": {
+            "structure": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
+            "character": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
+            "prose": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
+            "resonance": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
+            "ai_cleanliness": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
+            "reader_experience": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
+            "fidelity": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "available": { "const": false } }, "required": ["available"] },
+          "then": {
+            "properties": {
+              "total": { "const": null },
+              "grade": { "const": null },
+              "originality_bonus": { "const": null },
+              "dimensions": {
+                "properties": {
+                  "structure": { "const": null },
+                  "character": { "const": null },
+                  "prose": { "const": null },
+                  "resonance": { "const": null },
+                  "ai_cleanliness": { "const": null },
+                  "reader_experience": { "const": null },
+                  "fidelity": { "const": null }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "total": { "type": "number" },
+              "grade": { "enum": ["A", "A-", "B+", "B", "C+", "C", "D"] },
+              "originality_bonus": { "enum": [0, 3, 5] },
+              "dimensions": {
+                "properties": {
+                  "structure": { "$ref": "#/$defs/scoreDimension" },
+                  "character": { "$ref": "#/$defs/scoreDimension" },
+                  "prose": { "$ref": "#/$defs/scoreDimension" },
+                  "resonance": { "$ref": "#/$defs/scoreDimension" },
+                  "ai_cleanliness": { "$ref": "#/$defs/scoreDimension" },
+                  "reader_experience": { "$ref": "#/$defs/scoreDimension" }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "recommendation": { "enum": ["交付", "修订后交付", "重写建议", "仅诊断", "待人工确认"] },
     "red_flags": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
@@ -140,6 +207,15 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "willing_to_share": { "enum": ["愿意", "不愿意"] }
+      }
+    },
+    "scoreDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "grade"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 100 },
+        "grade": { "enum": ["A", "A-", "B+", "B", "C+", "C", "D"] }
       }
     },
     "finding": {

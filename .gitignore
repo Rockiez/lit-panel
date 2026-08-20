@@ -7,3 +7,12 @@ tests/runs/
 !.agents/plugins/
 !.agents/plugins/marketplace.json
 .DS_Store
+.playwright-cli/
+output/playwright/
+
+# 专家校准系统、运行数据与相关素材，仅本地使用
+/evals/
+/tests/test_calibration_pipeline.py
+/tests/test_corpus_audit.py
+/tests/test_evaluation_lab.py
+/tests/test_evaluation_recovery.py

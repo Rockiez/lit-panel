@@ -970,7 +970,7 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
         ])
         self.assertEqual(code_t3, 0)
 
-    def test_cli_default_preserves_legacy_exact_only_behavior(self):
+    def test_cli_default_runs_all_verification_tiers(self):
         quotes_normalized = self.tmppath / "quotes_normalized.json"
         quotes_normalized.write_text(
             json.dumps([
@@ -984,10 +984,10 @@ class TestCLIFeaturesAndOutputs(unittest.TestCase):
             encoding="utf-8",
         )
 
-        self.assertEqual(main([str(quotes_normalized), str(self.text_file)]), 1)
+        self.assertEqual(main([str(quotes_normalized), str(self.text_file)]), 0)
         self.assertEqual(
-            main([str(quotes_normalized), str(self.text_file), "--max-tier", "2"]),
-            0,
+            main([str(quotes_normalized), str(self.text_file), "--max-tier", "1"]),
+            1,
         )
 
 

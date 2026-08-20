@@ -21,9 +21,15 @@ class DistributionTests(unittest.TestCase):
                 "SKILL.md", "agents", "references/registry.md",
                 "schema/seat-output.schema.json", "schema/run-manifest.schema.json",
                 "schema/execution-receipt.schema.json",
-                "schema/verification-receipt.schema.json", "schema/derived-report.schema.json",
+                "schema/verification-receipt.schema.json",
+                "schema/quote-repair-request.schema.json",
+                "schema/quote-repair-patch.schema.json",
+                "schema/quote-repair-receipt.schema.json",
+                "schema/derived-report.schema.json",
                 "scripts/prepare_run.py", "scripts/validate_execution_receipt.py",
-                "scripts/verify-quotes.py", "scripts/verify_quotes.py", "scripts/derive_report.py",
+                "scripts/verify-quotes.py", "scripts/verify_quotes.py",
+                "scripts/quote_repair.py", "scripts/repair_quotes.py",
+                "scripts/derive_report.py",
             ):
                 self.assertTrue((skill / path).exists(), f"{host} missing {path}")
 

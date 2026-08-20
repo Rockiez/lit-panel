@@ -380,11 +380,13 @@ class RuntimeContractTests(unittest.TestCase):
             result = json.loads(
                 derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
             )
-            self.assertEqual(result["schema_version"], "1.1")
+            self.assertEqual(result["schema_version"], "1.2")
             self.assertEqual(
                 result["scores"],
                 {
                     "available": True,
+                    "status": "verified",
+                    "status_reasons": [],
                     "formula_version": "0.4.1-closed",
                     "total": 95,
                     "grade": "A",
@@ -405,6 +407,150 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertIn("## 总分卡", markdown)
             self.assertIn("**95/100 · A**", markdown)
             self.assertIn("分数由判据向量机械导出，评审席不产生任何数字。", markdown)
+
+    def test_invalid_quotes_keep_provisional_scores_from_frozen_judgments(self) -> None:
+        """Break caught: a bad quote erases a score instead of degrading its evidence status."""
+        cases = (
+            ("lit-structure", "N1", "lit-structure:N1", "structure", {"score": 78, "grade": "B"}),
+            ("lit-slop", "A1", "lit-slop:A1", "ai_cleanliness", {"score": 97, "grade": "A"}),
+            (
+                "lit-naive-reader", "R2", "lit-naive-reader@reader-01:R2",
+                "reader_experience", {"score": 75, "grade": "B"},
+            ),
+        )
+        for seat, criterion_id, expected_key, dimension, expected_dimension in cases:
+            with self.subTest(seat=seat), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                run_dir, manifest = prepare(root, "standard")
+                seats = write_outputs(
+                    root,
+                    manifest,
+                    problem=(seat, criterion_id),
+                    bad_quote=(seat, criterion_id),
+                )
+                receipt = verify(root, seats, expected=1)
+                execution = write_execution(root, manifest, seats)
+                result = json.loads(
+                    derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+                )
+
+                self.assertFalse(result["formal"])
+                self.assertTrue(result["scores"]["available"])
+                self.assertEqual(result["scores"]["status"], "provisional")
+                self.assertEqual(
+                    result["scores"]["status_reasons"],
+                    [f"引文核验失败: {expected_key}"],
+                )
+                self.assertEqual(result["scores"]["dimensions"][dimension], expected_dimension)
+                markdown = (root / "report.md").read_text(encoding="utf-8")
+                self.assertIn("评分状态：暂定（引文证据降级）", markdown)
+                self.assertIn(f"引文核验失败: {expected_key}", markdown)
+
+    def test_invalid_originality_quote_still_removes_the_bonus_provisionally(self) -> None:
+        """Break caught: an unverified originality judgment is dropped from the score vector."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(
+                root,
+                manifest,
+                problem=("lit-originality", "O1"),
+                bad_quote=("lit-originality", "O1"),
+            )
+            receipt = verify(root, seats, expected=1)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertEqual(result["scores"]["originality_bonus"], 0)
+            self.assertEqual(result["scores"]["total"], 90)
+
+    def test_invalid_fidelity_quote_keeps_provisional_fidelity_score_when_source_exists(self) -> None:
+        """Break caught: a fidelity quote error clears a score despite the source being present."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard", source=SOURCE)
+            seats = write_outputs(
+                root,
+                manifest,
+                problem=("lit-fidelity", "F1"),
+                bad_quote=("lit-fidelity", "F1"),
+            )
+            receipt = verify(root, seats, source=SOURCE, expected=1)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(
+                    root, seats, receipt, run_dir, execution, source=SOURCE
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertEqual(
+                result["scores"]["dimensions"]["fidelity"],
+                {"score": 45, "grade": "C"},
+            )
+            self.assertEqual(result["scores"]["total"], 45)
+
+    def test_full_run_without_source_still_scores_every_non_fidelity_dimension(self) -> None:
+        """Break caught: missing source clears literary scores instead of only fidelity."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "full")
+            seats = write_outputs(root, manifest)
+            receipt = verify(root, seats)
+            execution = write_execution(
+                root,
+                manifest,
+                seats,
+                gaps=[
+                    f"{item['number']} / {item['seat']}: {item['reason']}"
+                    for item in manifest["skipped_seats"]
+                    if item["warning"]
+                ],
+            )
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertFalse(result["formal"])
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "verified")
+            self.assertIsNone(result["scores"]["dimensions"]["fidelity"])
+            for dimension in (
+                "structure", "character", "prose", "resonance",
+                "ai_cleanliness", "reader_experience",
+            ):
+                self.assertIsNotNone(result["scores"]["dimensions"][dimension])
+
+    def test_missing_one_of_multiple_scoring_readers_still_blocks_the_score(self) -> None:
+        """Break caught: one surviving reader hides a missing reader output and yields a score."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard", readers=2)
+            seats = write_outputs(root, manifest)
+            receipt = verify(root, seats)
+            execution = write_execution(
+                root,
+                manifest,
+                seats,
+                gaps=["缺少席位输出: lit-naive-reader@reader-02"],
+            )
+            (seats / "lit-naive-reader-reader-02.json").unlink()
+            receipt.unlink()
+            receipt = verify(root, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertFalse(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "unavailable")
+            self.assertTrue(
+                any("reader-02" in reason for reason in result["scores"]["status_reasons"])
+            )
 
     def test_scorecard_deducts_an_ordinary_core_problem(self) -> None:
         """Break caught: ordinary core failures stop reducing their literary dimension."""

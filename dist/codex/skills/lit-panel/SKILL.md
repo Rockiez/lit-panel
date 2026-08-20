@@ -1,6 +1,6 @@
 ---
 name: lit-panel
-description: 当需要评审、审稿或比较中文回忆录与叙事文本时使用。以十一席真实 subagent 互盲评审、闭合执行回执、逐字引文核验、可复现的质性 A/B/C/N/A 带位与机械 0-100 评分视图输出；评审席自身禁止打分。
+description: 当需要评审、审稿或比较中文回忆录与叙事文本时使用。以十一席真实 subagent 互盲评审、闭合执行回执、逐字引文核验、可复现的质性 A/B/C/N/A 带位与带证据状态的机械 0-100 评分视图输出；评审席自身禁止打分。
 ---
 
 # lit-panel 运行编排
@@ -167,7 +167,8 @@ python3 scripts/validate_seat_output.py <seat.json> --expected-seat <agent-name>
 
 ```bash
 python3 scripts/verify_quotes.py <seat-output-file-or-dir> <clean-text> \
-  [--source <source-file-or-dir>] --output verification-receipt.json
+  [--source <source-file-or-dir>] --output verification-receipt.initial.json \
+  --repair-request quote-repair-request.json
 ```
 
 脚本对所有 `quotes[]` 使用随包分发的 Tier 1–5 引文引擎，并把 `tier/tier_name/score/matched_snippet` 写入结构化回执：
@@ -177,14 +178,31 @@ python3 scripts/verify_quotes.py <seat-output-file-or-dir> <clean-text> \
 - Tier 4 Fuzzy Alignment 只生成非通过的人工仲裁候选；即使相似度达到阈值也必须作废，不得进入有效证据或阶段三。
 - Tier 5 Void 处理格式违约、目标素材缺失与查无此文；结构化席位输出不使用空引文占位。
 
-任一 quote 在 Tier 1–3 均未通过，则整个 `<seat>:<criterion-id>` 判定作废并写入回执；作废判定不参与带位或修订推导，只进入人工仲裁，并形成 coverage gap，使本轮只能输出诊断。禁止 LLM 复判或静默修补。独立审计同一引擎时可运行 `scripts/verify-quotes.py <quotes.json> <clean-text> --max-tier 5`；带下划线的 `verify_quotes.py` 是闭合运行接口，带连字符的 `verify-quotes.py` 是通用审计接口。
+任一 quote 在 Tier 1–3 均未通过，则整个 `<seat>:<criterion-id>` 初次判定作废并写入回执；Tier 4 的 `matched_snippet` 只是定位线索，不是可直接采纳的引文，也不存在人工 override。若 `quote-repair-request.json.requests[]` 非空，允许下面这条**一次性、仅引文重取**闭环：
+
+1. 按 `seat/reader_id` 把每项 request 发回原席位；优先续发原 subagent 上下文，无法续发时以同一原始 packet、同一 persona 和 clean text/source 新建该席上下文。不得加入其他席位结论、派生报告或建议。
+2. 明确要求席位重新定位原文，但冻结原输出中的 `verdict/severity/note/recommendation/fidelity_state/free_view/reader`。席位只可返回符合 `schema/quote-repair-patch.schema.json` 的 JSON；每项 criterion 只能含 `id/quotes`，不得输出解释或其他字段。
+3. 每个作废判据必须且只能出现一次；收齐后执行：
+
+```bash
+python3 scripts/repair_quotes.py <original-seat-output-file-or-dir> \
+  <quote-repair-patch-file-or-dir> verification-receipt.initial.json <clean-text> \
+  [--source <source-file-or-dir>] --output-dir repaired-seat-outputs \
+  --verification-output verification-receipt.json \
+  --repair-receipt quote-repair-receipt.json
+```
+
+`repair_quotes.py` 会先重算初次回执、防止补丁触及非作废判据或任何非引文字段，再对修复后的全部席位输出完整重跑 Tier 1–5。退出码 0 才能用 `repaired-seat-outputs` 与最终 `verification-receipt.json` 进入正式闭合路径；退出码 1 表示一次重取后仍有作废引文，阶段三仍使用这组修复后产物生成诊断结果，但不得二次重取；退出码 2 是契约错误，不能继续合成。初次回执、request、patch、最终回执与 repair receipt 必须一并保存。
+
+禁止 orchestrator、LLM 或人工静默改写引文；禁止把 Tier 4 候选强制转为通过。若不执行上述闭环，初次作废判定仍只进入人工仲裁并形成 coverage gap。带下划线的 `verify_quotes.py` 是闭合运行接口，带连字符的 `verify-quotes.py` 是通用审计接口；二者默认都执行完整 Tier 1–5，通用入口的 `--max-tier` 仅用于显式诊断降级，不能替代闭合回执。
 
 ## 7. 阶段三：机械合成
 
 不得由 orchestrator 自由手写结论：
 
 ```bash
-python3 scripts/derive_report.py <seat-output-dir> verification-receipt.json \
+python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
+  <initial-or-final-verification-receipt.json> \
   run.json execution-receipt.json references/criteria \
   --text <clean-text> [--source <source-file-or-dir>] [--brief <brief-file>] \
   --output-json derived-report.json --output-markdown report.md
@@ -194,7 +212,7 @@ python3 scripts/derive_report.py <seat-output-dir> verification-receipt.json \
 
 只有 `native_subagents=true`、`degraded=false`、所有预期派发/输出/判据与席 08 证明齐全、输入和核验回执一致且最终 `coverage_gaps=[]` 时，报告才为 `formal=true`。否则报告为 `formal=false`、两类 `bands=null`、建议“仅诊断”。正式运行中某维度未覆盖所产生的 `N/A`，不得用来掩盖诊断性的 `null`。
 
-在正式闭合的前提下，脚本从判据文件读取 `veto/core/extended` 和 `[通过]/[风险]`，只对核验有效判定执行：
+脚本从判据文件读取 `veto/core/extended` 和 `[通过]/[风险]`。以下第 1–8 项只使用核验有效判定；第 9 项的评分按独立证据状态合同执行：
 
 1. 问题判定=`[通过]` 的 NO，或 `[风险]` 的 YES。
 2. 忠实带：无席 01 为 N/A；高严重度 `CONTRADICTED/UNSUPPORTED` 为 C；其他问题为 B；干净为 A。
@@ -204,13 +222,15 @@ python3 scripts/derive_report.py <seat-output-dir> verification-receipt.json \
 6. 人工仲裁包含 ABSTAIN、veto NA、veto 中/低严重度问题、席 11 问题、素读者报警与引文作废项。
 7. 决策建议：忠实/文学均 N/A 为“仅诊断”；任一 C 为“重写建议”；文学 A 且忠实 A/N/A 为“交付”；素读者报警为“待人工确认”；其余为“修订后交付”。
 8. 修订包收集全部问题判定，按 high→medium→low 排序。合成层只编辑已有 `note/free_view`，不得新增审美论断。
-9. 在不改变 A/B/C/N/A 质性带位的同时，按下节冻结公式导出 0-100 `scores` 视图；评审席与 orchestrator 不得直接给分、自由改分、设置百分比或临时权重。
+9. 在不改变 A/B/C/N/A 质性带位的同时，按下节冻结公式导出 0-100 `scores` 视图；评审席与 orchestrator 不得直接给分、自由改分、设置百分比或临时权重。引文作废仍不能进入正式带位、红线或修订结论，但不得因此抹掉评分：评分继续使用被冻结的结构化判定向量，并把状态标为 `provisional`、逐项列出引文失败原因。
 
 `derived-report.json` 必须符合 `schema/derived-report.schema.json`；`report.md` 是可读投影。保存 `run.json`、`execution-receipt.json`、席位 JSON、核验回执、派生 JSON 和 Markdown 报告，形成可复现证据链。
 
 ### 7.1 评分导出（恢复 v0.4.1 合同）
 
-评分是判据向量的确定性视图，不是新的评审意见。闭合变体标识为 `formula_version=0.4.1-closed`，报告 schema 因新增必填 `scores` 升为 `1.1`。只有 `formal=true` 且完整覆盖 03/04/05/06/07/08/09 时才可用；否则 `scores.available=false`，`total/grade/originality_bonus` 与全部维度均为 `null`。忠实度只在提供 source 并覆盖席 01 时形成，未提供 source 时为 `null`，不影响其他维度可用性。
+评分是判据向量的确定性视图，不是新的评审意见。闭合变体标识仍为 `formula_version=0.4.1-closed`；报告 schema 1.2 为 `scores` 增加 `status` 与 `status_reasons`。评分可用性不再依赖 `formal`：只要 03/04/05/06/07/08/09 的结构化判定、原生隔离派发和席 08 两步证明完整，就必须输出数值。`status=verified` 表示评分输入的引文均通过；任一引文作废时仍按冻结判定计分，但必须输出 `status=provisional` 并在 `status_reasons` 列出对应 seat/reader/criterion。只有评分所需席位、判据或可信执行证明确实缺失，或评分判据本身为未决 ABSTAIN/核心 NA 时，才允许 `status=unavailable`、`scores.available=false` 和数值 `null`。
+
+忠实度是唯一来源条件维度：未提供 source 时 `dimensions.fidelity=null`，其余维度和总分照常形成；提供 source 后，即使忠实席引文作废，也必须根据被冻结的 `fidelity_state/verdict/severity` 形成暂定忠实度分并标注 `provisional`。来源存在但忠实判定为 UNVERIFIABLE/未决时，仅忠实度保持 `null`，其他完整评分仍可输出暂定状态。
 
 1. 结构、人物、语言、情感分别对应 04/05/06/07，基准 90。普通 core 问题每项扣 12，extended 问题每项扣 5；任一 high veto 问题把该维度封顶 45，任一 medium/low veto 问题封顶 65。扣分与封顶都只使用核验有效的问题判定。
 2. AI 洁净度基准 100；席 03 每个有效问题扣 3，累计扣分最多 10。
@@ -226,13 +246,13 @@ python3 scripts/derive_report.py <seat-output-dir> verification-receipt.json \
 
 正式报告至少包含：run/版本与宿主披露、genre/readers、激活/跳过席位、原生执行摘要、席 08 两步证明、忠实带、文学带、总分卡、多维评分、建议、红线、修订包、人工仲裁、每席自由观点与核验统计。报告正文可更自然，但任何判断必须能追溯到 seat JSON 或机械回执。
 
-若 `formal=false`，标题与档案必须明确写“诊断性结果（不得作为正式带位或评分）”，两类 band 显示“未形成”而不是 N/A，`scores.available=false`，并完整列出降级和 coverage gaps。诊断仍可保留有效引文、自由观点、修订线索和仲裁项，但不得包装成正式报告。
+若 `formal=false`，标题与档案必须明确写“诊断性结果（不得作为正式带位）”，两类 band 显示“未形成”而不是 N/A，并完整列出降级和 coverage gaps。诊断报告仍按上一节独立判断评分可用性：引文作废或未覆盖非评分席不能清空已有分数；可计算时显示已核实或暂定评分，不可计算时才显示“未形成”。诊断仍可保留有效引文、自由观点、修订线索和仲裁项，但不得把暂定评分包装成正式带位。
 
 逐条自查：
 
 1. 互盲依赖真实独立上下文，不依赖一句“请忘掉前文”的提示。
 2. 禁止评审席直接打分或合成层自由改分；仅允许 `derive_report.py` 按冻结公式机械导出 `scores`。
-3. 引文逐字核验失败一律作废。
+3. 引文逐字核验失败一律作废为正式证据；评分保留冻结判定并降级为 `provisional`，不得显示为已核实。
 4. 素读者读前不得看到判据。
 5. ABSTAIN 与伦理发现转人工，不自动放行或阻断。
 6. 插件内 anchors/fixtures 只能是合成材料，不得含真实传主数据。

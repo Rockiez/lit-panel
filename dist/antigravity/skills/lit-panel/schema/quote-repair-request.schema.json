@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rockiez/lit-panel/schema/quote-repair-request.schema.json",
+  "title": "lit-panel quote-only repair request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "attempt", "inputs", "requests"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "attempt": { "const": 1 },
+    "inputs": { "$ref": "#/$defs/verificationInputs" },
+    "requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["seat", "reader_id", "criterion_id", "original_quotes", "failures"],
+        "properties": {
+          "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+          "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+          "criterion_id": { "type": "string", "pattern": "^[A-Z]+[0-9]+$" },
+          "original_quotes": { "$ref": "#/$defs/quotes" },
+          "failures": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["quote_index", "target", "tier", "tier_name", "score", "reason", "matched_snippet", "matched_file"],
+              "properties": {
+                "quote_index": { "type": "integer", "minimum": 0 },
+                "target": { "enum": ["text", "source"] },
+                "tier": { "type": "integer", "minimum": 4, "maximum": 5 },
+                "tier_name": { "enum": ["Fuzzy Alignment", "Void"] },
+                "score": { "type": "number", "minimum": 0, "maximum": 1 },
+                "reason": { "type": "string", "minLength": 1 },
+                "matched_snippet": { "type": ["string", "null"] },
+                "matched_file": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "target", "location"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "target": { "enum": ["text", "source"] },
+        "location": { "type": "string", "minLength": 1 }
+      }
+    },
+    "quotes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/quote" } },
+    "verificationInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text_sha256", "source_sha256", "seat_outputs"],
+      "properties": {
+        "text_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "seat_outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seat", "reader_id", "sha256"],
+            "properties": {
+              "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+              "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

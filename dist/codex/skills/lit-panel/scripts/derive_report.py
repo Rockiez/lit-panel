@@ -58,7 +58,7 @@ def finding(output: dict[str, Any], criterion: dict[str, Any]) -> dict[str, Any]
 
 def fidelity_band(valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]]) -> str:
     rows = [row for row in valid if row[0]["seat"] == "lit-fidelity"]
-    if not rows:
+    if not rows or any(row[1]["verdict"] in {"ABSTAIN", "NA"} for row in rows):
         return "N/A"
     if any(
         row[1]["fidelity_state"] == "CONTRADICTED"
@@ -247,13 +247,20 @@ def originality_bonus(
 
 
 def derive_scores(
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+    judgments: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
     outputs: list[dict[str, Any]],
     *,
-    formal: bool,
+    blockers: list[str] | None = None,
+    provisional_reasons: list[str] | None = None,
+    formal: bool | None = None,
     fidelity: str | None,
     reader_warning: bool,
 ) -> dict[str, Any]:
+    legacy_contract = formal is not None and blockers is None and provisional_reasons is None
+    blockers = [] if blockers is None else blockers
+    provisional_reasons = [] if provisional_reasons is None else provisional_reasons
+    if legacy_contract and not formal:
+        blockers = ["旧版评分合同要求 formal=true"]
     covered_seats = {output["seat"] for output in outputs}
     dimensions: dict[str, dict[str, int | float | str] | None] = {
         "structure": None,
@@ -264,9 +271,12 @@ def derive_scores(
         "reader_experience": None,
         "fidelity": None,
     }
-    available = formal and SCORING_SEATS.issubset(covered_seats)
+    missing_seats = sorted(SCORING_SEATS - covered_seats)
+    if missing_seats:
+        blockers = blockers + ["评分所需席位缺失: " + ", ".join(missing_seats)]
+    available = not blockers
     if not available:
-        return {
+        result = {
             "available": False,
             "formula_version": SCORE_FORMULA_VERSION,
             "total": None,
@@ -275,14 +285,20 @@ def derive_scores(
             "reader_warning": reader_warning,
             "dimensions": dimensions,
         }
+        if not legacy_contract:
+            result.update({
+                "status": "unavailable",
+                "status_reasons": list(dict.fromkeys(blockers + provisional_reasons)),
+            })
+        return result
 
     for dimension, seat in LITERARY_DIMENSIONS.items():
-        dimensions[dimension] = scored_dimension(seat, valid)
+        dimensions[dimension] = scored_dimension(seat, judgments)
 
     slop_problems = sum(
         output["seat"] == "lit-slop"
         and is_problem(metadata["polarity"], criterion["verdict"])
-        for output, criterion, metadata in valid
+        for output, criterion, metadata in judgments
     )
     slop_penalty = min(10, slop_problems * 3)
     ai_score = normalized_score(100 - slop_penalty)
@@ -295,7 +311,7 @@ def derive_scores(
         problems = sum(
             row_output is output
             and is_problem(metadata["polarity"], criterion["verdict"])
-            for row_output, criterion, metadata in valid
+            for row_output, criterion, metadata in judgments
         )
         reader_scores.append(normalized_score(85 - problems * 10))
     reader_score = normalized_score(sum(reader_scores) / len(reader_scores))
@@ -311,7 +327,7 @@ def derive_scores(
             "grade": score_grade(fidelity_score),
         }
 
-    bonus = originality_bonus(valid)
+    bonus = originality_bonus(judgments)
     literary_scores = [
         dimensions[name]["score"]
         for name in LITERARY_DIMENSIONS
@@ -323,7 +339,7 @@ def derive_scores(
     elif fidelity == "B":
         total = min(total, 75)
     total_score = normalized_score(total)
-    return {
+    result = {
         "available": True,
         "formula_version": SCORE_FORMULA_VERSION,
         "total": total_score,
@@ -332,6 +348,12 @@ def derive_scores(
         "reader_warning": reader_warning,
         "dimensions": dimensions,
     }
+    if not legacy_contract:
+        result.update({
+            "status": "provisional" if provisional_reasons else "verified",
+            "status_reasons": list(dict.fromkeys(provisional_reasons)),
+        })
+    return result
 
 
 def display_finding(item: dict[str, Any]) -> str:
@@ -361,8 +383,15 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     scores = report["scores"]
     if scores["available"]:
         warning = " ⚠ 读者预警" if scores["reader_warning"] else ""
+        status_label = (
+            "暂定（引文证据降级）"
+            if scores["status"] == "provisional"
+            else "已核实"
+        )
         lines.extend([
             f"**{scores['total']}/100 · {scores['grade']}{warning}**",
+            "",
+            f"评分状态：{status_label}",
             "",
             "分数由判据向量机械导出，评审席不产生任何数字。",
             "",
@@ -389,13 +418,21 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
                 lines.append(
                     f"| {labels[key]} | {dimension['score']} | {dimension['grade']} |"
                 )
+            elif key == "fidelity":
+                lines.append("| 忠实度 | 未评测（缺少来源或来源不足） | — |")
         lines.append(f"| 原创加分 | +{scores['originality_bonus']} | — |")
+        if scores["status_reasons"]:
+            lines.extend(["", "评分状态说明："])
+            lines.extend(f"- {reason}" for reason in scores["status_reasons"])
     else:
         lines.extend([
-            "未形成：数值视图只在运行正式闭合且覆盖席 03/04/05/06/07/08/09 时生成。",
+            "未形成：评分所需的结构化判定或可信执行证据不完整。",
             "",
             "分数由判据向量机械导出，评审席不产生任何数字。",
         ])
+        if scores["status_reasons"]:
+            lines.extend(["", "未形成原因："])
+            lines.extend(f"- {reason}" for reason in scores["status_reasons"])
     lines.extend(["", "## 覆盖与降级披露", ""])
     lines.extend([f"- {gap}" for gap in report["coverage_gaps"]] or ["- 无"])
     lines.extend(["", "### 跳过席位", ""])
@@ -516,6 +553,52 @@ def correlate_run(
     return gaps
 
 
+def scoring_execution_blockers(
+    manifest: dict[str, Any], execution: dict[str, Any], outputs: list[dict[str, Any]]
+) -> list[str]:
+    blockers: list[str] = []
+    if not execution["native_subagents"]:
+        blockers.append("评分执行未证明原生 subagent 隔离")
+
+    dispatches = {item["packet"]: item for item in execution["dispatches"]}
+    scoring_outputs = [
+        item for item in manifest["expected_outputs"] if item["seat"] in SCORING_SEATS
+    ]
+    actual_outputs = {output_identity(output): output for output in outputs}
+    for expected in scoring_outputs:
+        identity = (
+            f"{expected['seat']}@{expected['reader_id']}"
+            if expected["reader_id"]
+            else expected["seat"]
+        )
+        output = actual_outputs.get(identity)
+        if output is None:
+            blockers.append(f"评分缺少席位输出: {identity}")
+        else:
+            actual_ids = {item["id"] for item in output["criteria"]}
+            missing_ids = sorted(set(expected["criteria_ids"]) - actual_ids)
+            if missing_ids:
+                blockers.append(f"评分判据缺失: {identity}:{','.join(missing_ids)}")
+        packets = [expected["packet"]]
+        if expected["seat"] == "lit-naive-reader":
+            packets.append(expected["packet"].replace("step-2.json", "step-1.json"))
+        for packet in packets:
+            dispatch = dispatches.get(packet)
+            if dispatch is None:
+                blockers.append(f"评分 packet 缺少执行回执: {packet}")
+            elif dispatch["status"] != "completed":
+                blockers.append(f"评分 packet 执行失败: {packet}")
+            elif not dispatch["isolated"]:
+                blockers.append(f"评分 packet 未使用隔离上下文: {packet}")
+
+    proven_readers = {item["reader_id"] for item in execution["naive_readers"]}
+    for expected in scoring_outputs:
+        reader_id = expected["reader_id"]
+        if reader_id is not None and reader_id not in proven_readers:
+            blockers.append(f"评分缺少素读者两步执行证明: {reader_id}")
+    return list(dict.fromkeys(blockers))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="从闭合执行证据机械导出 lit-panel 报告")
     parser.add_argument("seat_outputs", type=Path)
@@ -574,6 +657,7 @@ def main() -> int:
         return 2
 
     invalidated = set(receipt["invalidated_criteria"])
+    judgments: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]] = []
     valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]] = []
     arbitration: list[dict[str, Any]] = []
     try:
@@ -584,6 +668,7 @@ def main() -> int:
                 if meta is None:
                     raise ContractError(f"未注册判据 {key}")
                 validate_fidelity_semantics(output, criterion, meta)
+                judgments.append((output, criterion, meta))
                 if key in invalidated:
                     item = finding(output, criterion)
                     item["reason"] = f"引文核验失败，判定作废：{criterion['note']}"
@@ -675,16 +760,44 @@ def main() -> int:
         literary = None
         final_recommendation = "仅诊断"
 
+    unresolved_scoring = [
+        criterion_key(output, criterion["id"])
+        for output, criterion, meta in judgments
+        if output["seat"] in SCORING_SEATS
+        and (
+            criterion["verdict"] == "ABSTAIN"
+            or (criterion["verdict"] == "NA" and meta["tier"] in {"veto", "core"})
+        )
+    ]
+    unresolved_fidelity = [
+        criterion_key(output, criterion["id"])
+        for output, criterion, meta in judgments
+        if output["seat"] == "lit-fidelity"
+        and (
+            criterion["verdict"] == "ABSTAIN"
+            or (criterion["verdict"] == "NA" and meta["tier"] in {"veto", "core"})
+        )
+    ]
+    score_blockers = scoring_execution_blockers(manifest, execution, outputs)
+    score_blockers.extend(f"评分判据未决: {key}" for key in sorted(unresolved_scoring))
+    score_provisional_reasons = [
+        f"引文核验失败: {key}" for key in sorted(invalidated)
+    ]
+    score_provisional_reasons.extend(
+        f"忠实度未评测: {key} 判定未决" for key in sorted(unresolved_fidelity)
+    )
+    score_fidelity = fidelity_band(judgments)
     scores = derive_scores(
-        valid,
+        judgments,
         outputs,
-        formal=formal,
-        fidelity=fidelity,
+        blockers=score_blockers,
+        provisional_reasons=score_provisional_reasons,
+        fidelity=score_fidelity,
         reader_warning=bool(naive_unwilling_outputs),
     )
 
     report = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "run_id": run_id,
         "formal": formal,
         "run": {

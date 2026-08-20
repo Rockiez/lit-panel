@@ -11,6 +11,8 @@ FILES = ("README.md", "README.en.md", "README.fr.md", "README.es.md")
 NAV = "[简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)"
 
 REQUIRED_LITERAL = (
+    "0.5.4",
+    "0.5.3",
     "0.5.2",
     "0.4.1",
     "0-100",

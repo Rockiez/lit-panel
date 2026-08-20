@@ -1,8 +1,8 @@
 [简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)
 
-# lit-panel 0.5.2
+# lit-panel 0.5.4
 
-面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废、质性 A/B/C/N/A 带位与确定性的 0-100 评分视图。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
+面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废、质性 A/B/C/N/A 带位与带证据状态的确定性 0-100 评分视图。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
 
 ## 支持矩阵
 
@@ -52,11 +52,14 @@ prepare_run.py → run.json + 逐席互盲 packets
   → 席 08 lit-naive-reader 每位读者严格两步并记录上下文/首读哈希证明
   → execution-receipt.json 证明原生 subagent、隔离、派发状态与降级情况
   → seat-output.schema.json 校验
-  → verify_quotes.py 逐字核验，失败判据作废
+  → verify_quotes.py 逐字核验；失败时仅允许原席一次性重取 quotes
+  → repair_quotes.py 冻结全部判断字段并完整重验（仅在发生重取时）
   → derive_report.py 核对输入摘要与全部回执，机械派生正式报告或诊断
 ```
 
-闭合入口 `verify_quotes.py` 与独立审计入口 `verify-quotes.py` 共用 Tier 1–5 引擎：Tier 1 精确、Tier 2 归一化及受片段长度约束的 Tier 3 省略跨度可以通过；Tier 4 模糊对齐只生成非通过的人工仲裁候选，Tier 5 负责硬作废。每条结构化回执都会记录实际 tier，Tier 4/5 绝不进入带位合成。
+闭合入口 `verify_quotes.py` 与独立审计入口 `verify-quotes.py` 共用 Tier 1–5 引擎并默认完整执行五层：Tier 1 精确、Tier 2 归一化及受片段长度约束的 Tier 3 省略跨度可以通过；Tier 4 模糊对齐只生成非通过的定位候选，Tier 5 负责硬作废。每条结构化回执都会记录实际 tier，Tier 4/5 绝不直接进入带位合成。
+
+0.5.3 为作废引文加入一次性、可审计的安全恢复：初次核验可生成 `quote-repair-request.json`，只把对应判据发回原席重新定位原文；返回的 patch 只能包含判据 id 与替换后的 `quotes`。`repair_quotes.py` 机械冻结 verdict、严重度、评语、建议和自由观点，拒绝修改非作废判据，再完整重跑 Tier 1–5。重验仍失败时保持诊断模式，不允许第二次循环或人工强制通过。
 
 `prepare_run.py` 接受 `--genre memoir|other`（默认 `memoir`）与 `--readers=N`（默认 1）。默认 `standard` 启用 01–09 与 11；`--source` 满足忠实席 01 的输入条件，`--brief` 会让 `standard` 自动并入编辑意图席 10，并让已包含 10 的 `full/custom(...)` 激活该席；`quick` 不因 brief 自动扩席。`quick` 的基础集合是 01、02、03、08，但回忆录会自动追加伦理席 11；它不覆盖文学核心席，因此正式文学带为 N/A。`full` 覆盖 01–11，但缺少 source/brief 会以覆盖缺口披露。`custom(...)` 若在回忆录中显式排除 11，也会形成覆盖警告。派生器会从 canonical 判据重建运行计划，并核对执行回执中的每个 packet SHA-256；ABSTAIN 或核心/否决判据的 NA 不能自动形成 A。
 
@@ -66,9 +69,11 @@ prepare_run.py → run.json + 逐席互盲 packets
 
 只有 `native_subagents=true`、`degraded=false`、派发和判据输出完整、席 08 证明完整、输入摘要与核验回执一致且 `coverage_gaps=[]` 时，`derive_report.py` 才生成 `formal=true` 的正式带位。任何降级、失败/非隔离派发、未披露缺件或引文作废都会 fail closed：结果为诊断，`bands.fidelity=null`、`bands.literary=null`、建议为“仅诊断”。这与正式运行因未覆盖某一维度而得到的 N/A 不同。
 
-## 恢复的评分视图（0.5.2）
+## 带证据状态的评分视图（0.5.4）
 
-0.5.2 把 v0.4.1 的确定性评分公式接回 0.5 的闭合运行时。评审席仍然零打分：它们只提交判据向量；只有 `derive_report.py` 可以在正式闭合且完整覆盖 03/04/05/06/07/08/09 时生成 `derived-report.json.scores`。不完整、降级或诊断运行的 `scores.available=false`，总分与各维度均为 `null`。
+0.5.2 把 v0.4.1 的确定性评分公式接回闭合运行时；0.5.4 进一步把“能否评分”和“引文是否核实”解耦。评审席仍然零打分，只提交判据向量；只有 `derive_report.py` 可以生成 `derived-report.json.scores`。只要 03/04/05/06/07/08/09 的结构化判定、隔离派发和席 08 两步证明完整，就必须输出数值：引文全部通过时为 `status=verified`，任一引文作废时仍按被冻结的判定计分，但标记 `status=provisional` 并在 `status_reasons` 列出受影响判据。只有评分席位、判据或可信执行证明确实缺失，或评分判据本身未决时，才允许 `scores.available=false`。
+
+未提供 source 时，只把忠实度显示为“未评测”并令 `dimensions.fidelity=null`，其他六个维度和总分照常形成；提供 source 后，即使忠实席引文错误，也会根据原席冻结判定形成暂定忠实度分。引文作废仍会阻断正式 A/B/C 带位、红线和修订结论，暂定评分绝不冒充已核实证据。
 
 - 结构、人物、语言、情感从 90 分起，普通 core 问题每项扣 12，extended 每项扣 5；高严重度 veto 封顶 45，中低严重度 veto 封顶 65。
 - AI 洁净度从 100 分起，每个有效 AI 痕迹问题扣 3，最多扣 10；读者体验从 85 分起，每个 R 系问题扣 10。
@@ -86,29 +91,39 @@ python3 core/lit-panel/scripts/prepare_run.py text.md \
 # 宿主按 packets 派发真实 subagent，并写 execution-receipt.json；随后：
 python3 core/lit-panel/scripts/validate_execution_receipt.py runs/example/execution-receipt.json
 python3 core/lit-panel/scripts/verify_quotes.py runs/example/seat-outputs runs/example/text.txt \
-  --output runs/example/verification-receipt.json
+  --output runs/example/verification-receipt.initial.json \
+  --repair-request runs/example/quote-repair-request.json
+# 若 request 非空：原席只返回 quote-repair-patches/*.json；随后：
+python3 core/lit-panel/scripts/repair_quotes.py \
+  runs/example/seat-outputs runs/example/quote-repair-patches \
+  runs/example/verification-receipt.initial.json runs/example/text.txt \
+  --output-dir runs/example/repaired-seat-outputs \
+  --verification-output runs/example/verification-receipt.json \
+  --repair-receipt runs/example/quote-repair-receipt.json
 python3 core/lit-panel/scripts/derive_report.py \
-  runs/example/seat-outputs runs/example/verification-receipt.json \
+  <seat-output-dir> <verification-receipt.json> \
   runs/example/run.json runs/example/execution-receipt.json \
   core/lit-panel/references/criteria --text runs/example/text.txt \
   --output-json runs/example/derived-report.json \
   --output-markdown runs/example/report.md
 ```
 
+无作废项时，最后一步使用原始 `seat-outputs` 与 `verification-receipt.initial.json`；只有 `repair_quotes.py` 退出 0 时才改用 `repaired-seat-outputs` 与最终 `verification-receipt.json`。重验退出 1 仍须用这组修复后产物生成诊断结果，不得再重取第二次。
+
 提供来源时，`verify_quotes.py` 与 `derive_report.py` 都要传同一个 `--source <文件或目录>`；提供 brief 时，`derive_report.py` 还要传与阶段零一致的 `--brief <文件>`。`derive_report.py` 的五个位置参数依次是席位输出、引文回执、运行清单、执行回执和判据目录，不能沿用旧接口。`run.json` 中 source/brief 摘要非 null 而合成参数缺失或文件变化都会直接失败。
 
 ## 证据产物
 
-一轮闭合运行至少保留六类产物：
+一轮闭合运行至少保留六类产物；发生引文重取时额外保留 request、patch、初次回执和修复回执：
 
 - `run.json`：输入摘要、体裁、读者数、席位和期望输出的冻结清单；
 - `execution-receipt.json`：宿主、原生隔离、packet 派发、席 08 两步与覆盖缺口证明；
 - 每席 `seat-output.schema.json` 对应的 JSON；
 - `verification-receipt.json`：逐条 quote 的命中/作废回执；
-- `derived-report.json`：冻结规则机械派生的带位、`scores`、红线、修订和仲裁；
+- `derived-report.json`：冻结规则机械派生的带位、带 `status/status_reasons` 的 `scores`、红线、修订和仲裁；
 - `report.md`：面向人的正式评审或明确标记的诊断投影。
 
-项目禁止评审席直接打分、主观百分比和自由加权；只允许闭合脚本按 v0.4.1 公式导出可复算的 0-100 `scores`。A/B/C/N/A 仍是独立的质性带位；作废判定不仅不能进入合成，还会使该轮失去正式闭合资格。
+项目禁止评审席直接打分、主观百分比和自由加权；只允许闭合脚本按 v0.4.1 公式导出可复算的 0-100 `scores`。A/B/C/N/A 仍是独立的质性带位；作废引文不能进入正式带位合成，并会使该轮失去正式闭合资格，但对应冻结判定仍进入暂定评分，且必须披露证据状态。
 
 ## 架构
 

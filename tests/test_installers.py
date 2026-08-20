@@ -101,7 +101,7 @@ class InstallerShellTests(unittest.TestCase):
             "for host in ('codex', 'claude', 'antigravity'):\n"
             "    scripts = root / 'dist' / host / 'skills' / 'lit-panel' / 'scripts'\n"
             "    scripts.mkdir(parents=True, exist_ok=True)\n"
-            "    for name in ('verify_quotes.py', 'verify-quotes.py'):\n"
+            "    for name in ('verify_quotes.py', 'verify-quotes.py', 'repair_quotes.py'):\n"
             "        (scripts / name).write_text('import argparse; argparse.ArgumentParser().parse_args()\\n')\n",
             encoding="utf-8",
         )
@@ -109,7 +109,7 @@ class InstallerShellTests(unittest.TestCase):
         for host in ("codex", "claude", "antigravity"):
             scripts = self.root / "dist" / host / "skills" / "lit-panel" / "scripts"
             scripts.mkdir(parents=True, exist_ok=True)
-            for name in ("verify_quotes.py", "verify-quotes.py"):
+            for name in ("verify_quotes.py", "verify-quotes.py", "repair_quotes.py"):
                 (scripts / name).write_text(
                     "import argparse; argparse.ArgumentParser().parse_args()\n",
                     encoding="utf-8",

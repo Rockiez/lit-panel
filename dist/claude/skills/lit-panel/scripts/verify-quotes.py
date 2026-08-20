@@ -873,8 +873,8 @@ def main(argv: list[str] | None = None) -> int:
         "--max-tier",
         type=int,
         choices=[1, 2, 3, 4, 5],
-        default=1,
-        help="启用的最高核验等级（默认 1；1: Exact, 2: +Normalized, 3: +Ellipsis, 4: +Fuzzy, 5: All）",
+        default=5,
+        help="启用的最高核验等级（默认 5；1: Exact, 2: +Normalized, 3: +Ellipsis, 4: +Fuzzy, 5: All）",
     )
     parser.add_argument(
         "--include-tier",

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rockiez/lit-panel/schema/quote-repair-receipt.schema.json",
+  "title": "lit-panel quote-only repair audit receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "attempt", "inputs", "repaired_criteria", "status", "remaining_invalidated_criteria", "outputs"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "attempt": { "const": 1 },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initial_verification_sha256", "repair_patches"],
+      "properties": {
+        "initial_verification_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "repair_patches": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seat", "reader_id", "sha256"],
+            "properties": {
+              "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+              "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "repaired_criteria": { "$ref": "#/$defs/criterionKeys" },
+    "status": { "enum": ["repaired", "failed"] },
+    "remaining_invalidated_criteria": { "$ref": "#/$defs/criterionKeys" },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seat_outputs", "verification_sha256"],
+      "properties": {
+        "seat_outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seat", "reader_id", "sha256"],
+            "properties": {
+              "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
+              "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        },
+        "verification_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "criterionKeys": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^lit-[a-z0-9-]+(?:@reader-[0-9]{2,})?:[A-Z]+[0-9]+$" },
+      "uniqueItems": true
+    }
+  }
+}

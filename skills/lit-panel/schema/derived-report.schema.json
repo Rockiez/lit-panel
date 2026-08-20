@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "run_id", "formal", "run", "execution", "coverage_gaps", "bands", "scores", "recommendation", "red_flags", "revisions", "arbitration", "seat_views", "verification"],
   "properties": {
-    "schema_version": { "const": "1.1" },
+    "schema_version": { "const": "1.2" },
     "run_id": { "type": "string", "minLength": 1 },
     "formal": { "type": "boolean" },
     "run": {
@@ -47,9 +47,15 @@
     "scores": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["available", "formula_version", "total", "grade", "originality_bonus", "reader_warning", "dimensions"],
+      "required": ["available", "status", "status_reasons", "formula_version", "total", "grade", "originality_bonus", "reader_warning", "dimensions"],
       "properties": {
         "available": { "type": "boolean" },
+        "status": { "enum": ["verified", "provisional", "unavailable"] },
+        "status_reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
         "formula_version": { "const": "0.4.1-closed" },
         "total": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "grade": { "type": ["string", "null"], "enum": ["A", "A-", "B+", "B", "C+", "C", "D", null] },
@@ -75,6 +81,7 @@
           "if": { "properties": { "available": { "const": false } }, "required": ["available"] },
           "then": {
             "properties": {
+              "status": { "const": "unavailable" },
               "total": { "const": null },
               "grade": { "const": null },
               "originality_bonus": { "const": null },
@@ -93,6 +100,7 @@
           },
           "else": {
             "properties": {
+              "status": { "enum": ["verified", "provisional"] },
               "total": { "type": "number" },
               "grade": { "enum": ["A", "A-", "B+", "B", "C+", "C", "D"] },
               "originality_bonus": { "enum": [0, 3, 5] },

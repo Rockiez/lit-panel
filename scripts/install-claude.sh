@@ -48,12 +48,12 @@ fi
 if [ "${REBUILD}" = true ]; then
   python3 "${REPO_ROOT}/scripts/build_dist.py"
 fi
-for verifier in verify_quotes.py verify-quotes.py; do
-  if [ ! -f "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" ]; then
-    echo "错误：Claude 分发缺少阶段二核验器 ${verifier}；请使用完整 release checkout，维护者可加 --rebuild。" >&2
+for runtime in verify_quotes.py verify-quotes.py repair_quotes.py; do
+  if [ ! -f "${DIST_ROOT}/skills/lit-panel/scripts/${runtime}" ]; then
+    echo "错误：Claude 分发缺少阶段二运行脚本 ${runtime}；请使用完整 release checkout，维护者可加 --rebuild。" >&2
     exit 1
   fi
-  python3 "${DIST_ROOT}/skills/lit-panel/scripts/${verifier}" --help >/dev/null
+  python3 "${DIST_ROOT}/skills/lit-panel/scripts/${runtime}" --help >/dev/null
 done
 claude plugin validate --strict "${DIST_ROOT}"
 

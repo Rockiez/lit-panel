@@ -2,7 +2,7 @@
 
 # lit-panel
 
-Version 0.5.2 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive qualitative A/B/C/N/A bands plus a deterministic 0-100 score view. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
+Version 0.5.4 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive qualitative A/B/C/N/A bands plus a deterministic 0-100 score view with an explicit evidence status. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
 
 ## Support matrix
 
@@ -52,11 +52,12 @@ prepare_run.py -> run.json + mutually blind seat packets
   -> strict two-step Seat 08 flow for every reader, with context and first-read hash proof
   -> execution-receipt.json proves native subagents, isolation, dispatch status, and degradation
   -> validate against seat-output.schema.json
-  -> verify_quotes.py checks verbatim evidence and invalidates failed criteria
+  -> verify_quotes.py checks verbatim evidence; a failed criterion may return once to its original seat for quotes only
+  -> repair_quotes.py freezes every judgment field and fully re-verifies, only when a repair was requested
   -> derive_report.py correlates all receipts and emits either a formal report or a diagnostic
 ```
 
-The closed-run `verify_quotes.py` and standalone-audit `verify-quotes.py` share one Tier 1–5 engine. Tier 1 exact, Tier 2 normalized, and length-constrained Tier 3 ellipsis spans may verify; Tier 4 fuzzy alignment is only a non-passing arbitration candidate, while Tier 5 is a hard invalidation. Structured receipts record the actual tier, and Tier 4/5 evidence never reaches band derivation.
+The closed-run `verify_quotes.py` and standalone-audit `verify-quotes.py` share one Tier 1–5 engine and both run all five tiers by default. Tier 1 exact, Tier 2 normalized, and length-constrained Tier 3 ellipsis spans may verify; Tier 4 fuzzy alignment is only a non-passing locator, while Tier 5 is a hard invalidation. Structured receipts record the actual tier, and Tier 4/5 evidence never directly reaches band derivation. Version 0.5.3 adds one auditable quote-only retry: the original seat may return only criterion ids and replacement `quotes`; `repair_quotes.py` freezes every judgment field and fully re-verifies. A second retry or manual override is forbidden.
 
 `prepare_run.py` accepts `--genre memoir|other` (default `memoir`) and `--readers=N` (default 1). The default `standard` preset enables Seats 01-09 and 11. `--source` satisfies fidelity Seat 01's input condition. `--brief` makes `standard` add editorial-intent Seat 10 and activates Seat 10 when `full` or `custom(...)` already selects it; `quick` does not expand merely because a brief is present. The base `quick` set is 01, 02, 03, and 08, but memoir runs automatically add ethics Seat 11; because the literary core is absent, a closed quick run has literary band N/A. `full` covers Seats 01-11, while missing source or brief inputs are disclosed as coverage gaps. A memoir `custom(...)` run that explicitly excludes Seat 11 also creates a warning gap.
 
@@ -68,9 +69,11 @@ Each `lit-naive-reader` follows a strict two-step protocol. Step 1 receives only
 
 `derive_report.py` emits `formal=true` only when native subagents are proven, `degraded=false`, every dispatch/output and Seat 08 proof is complete, input digests and verification receipts match, and `coverage_gaps=[]`. Any degradation, failed or non-isolated dispatch, missing artifact, or invalidated quote produces a diagnostic with `bands.fidelity=null`, `bands.literary=null`, and recommendation `仅诊断`. Diagnostic `null` is distinct from a formal N/A for a dimension that was legitimately out of scope.
 
-## Restored score view (0.5.2)
+## Evidence-status score view (0.5.4)
 
-Version 0.5.2 restores the v0.4.1 deterministic formula inside the 0.5 closed runtime. Review seats still assign no numbers: they only return criterion vectors. Only `derive_report.py` may populate `derived-report.json.scores`, and only for a formally closed run that completely covers Seats 03/04/05/06/07/08/09. In incomplete, degraded, or diagnostic runs, `scores.available=false` and the total and dimensions are `null`.
+Version 0.5.2 restored the v0.4.1 deterministic formula; version 0.5.4 separates score availability from quote verification. Review seats still assign no numbers: they only return criterion vectors, and only `derive_report.py` may populate `derived-report.json.scores`. Whenever Seats 03/04/05/06/07/08/09 have complete structured judgments, isolated dispatches, and Seat 08 two-step proof, the numeric view is emitted. Fully verified inputs use `status=verified`; an invalid quote no longer erases the score, but the frozen judgment is scored as `status=provisional` and every affected criterion is listed in `status_reasons`. `scores.available=false` is reserved for genuinely missing scoring seats, judgments, or trusted execution proof, and for unresolved scoring judgments.
+
+Without `--source`, only fidelity is unassessed (`dimensions.fidelity=null`); the other dimensions and total remain available. With source material present, a bad fidelity quote still yields a provisional fidelity score from the frozen seat judgment. Invalid quotes remain excluded from formal bands, red flags, and revision findings, so a provisional score never masquerades as verified evidence.
 
 - Structure, character, prose, and resonance start at 90. Each ordinary core problem deducts 12 and each extended problem deducts 5; a high-severity veto caps the dimension at 45, and a medium/low veto caps it at 65.
 - AI cleanliness starts at 100, deducting 3 for each valid AI-slop problem up to a total deduction of 10. Reader experience starts at 85 and deducts 10 for each R problem.
@@ -88,14 +91,24 @@ python3 core/lit-panel/scripts/prepare_run.py text.md \
 # Dispatch native subagents from packets and write execution-receipt.json, then:
 python3 core/lit-panel/scripts/validate_execution_receipt.py runs/example/execution-receipt.json
 python3 core/lit-panel/scripts/verify_quotes.py runs/example/seat-outputs runs/example/text.txt \
-  --output runs/example/verification-receipt.json
+  --output runs/example/verification-receipt.initial.json \
+  --repair-request runs/example/quote-repair-request.json
+# When requests are non-empty, collect quote-repair-patches/*.json from the original seats, then:
+python3 core/lit-panel/scripts/repair_quotes.py \
+  runs/example/seat-outputs runs/example/quote-repair-patches \
+  runs/example/verification-receipt.initial.json runs/example/text.txt \
+  --output-dir runs/example/repaired-seat-outputs \
+  --verification-output runs/example/verification-receipt.json \
+  --repair-receipt runs/example/quote-repair-receipt.json
 python3 core/lit-panel/scripts/derive_report.py \
-  runs/example/seat-outputs runs/example/verification-receipt.json \
+  <seat-output-dir> <verification-receipt.json> \
   runs/example/run.json runs/example/execution-receipt.json \
   core/lit-panel/references/criteria --text runs/example/text.txt \
   --output-json runs/example/derived-report.json \
   --output-markdown runs/example/report.md
 ```
+
+With no invalidated criterion, derive from the original `seat-outputs` and `verification-receipt.initial.json`. Use `repaired-seat-outputs` and the final `verification-receipt.json` after a repair attempt; exit 1 remains diagnostic and must not trigger a second retry.
 
 When a source is present, pass the same `--source <file-or-directory>` to both `verify_quotes.py` and `derive_report.py`. When a brief is present, also pass the unchanged `--brief <file>` to `derive_report.py`. Its five positional arguments are seat outputs, verification receipt, run manifest, execution receipt, and criteria directory; the older interface is no longer valid. A non-null source/brief digest in `run.json` fails immediately if the matching argument is absent or its content changed.
 
@@ -107,10 +120,10 @@ A closed run preserves at least six artifact classes:
 - `execution-receipt.json`, proving host-native isolation, packet dispatch, the Seat 08 two-step flow, and coverage gaps;
 - one JSON response per seat conforming to `seat-output.schema.json`;
 - `verification-receipt.json`, recording each quote match or invalidation;
-- `derived-report.json`, containing mechanically derived bands, `scores`, red lines, revisions, and arbitration items;
+- `derived-report.json`, containing mechanically derived bands, `scores` with `status/status_reasons`, red lines, revisions, and arbitration items;
 - `report.md`, either the human-facing formal review or an explicitly labeled diagnostic projection.
 
-Every YES/NO judgment requires a verbatim quote. Schema validation and mechanical quote verification occur before synthesis; a failed quote invalidates the entire criterion, prevents formal closure for that run, and cannot affect a formal band. Seats may not assign scores, percentages, or free-form weights; only the closed script may derive reproducible 0-100 `scores` with the v0.4.1 formula. A/B/C/N/A remains an independent qualitative view.
+Every YES/NO judgment requires a verbatim quote. Schema validation and mechanical quote verification occur before synthesis; a failed quote invalidates the criterion as formal evidence, prevents formal closure for that run, and cannot affect a formal band. It does not erase the numeric view: the frozen judgment contributes to a clearly marked provisional score. Seats may not assign scores, percentages, or free-form weights; only the closed script may derive reproducible 0-100 `scores` with the v0.4.1 formula. A/B/C/N/A remains an independent qualitative view.
 
 ## Architecture
 

@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La versión 0.5.2 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan bandas cualitativas A/B/C/N/A junto con una vista de puntuación determinista de 0-100. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
+La versión 0.5.4 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan bandas cualitativas A/B/C/N/A junto con una vista de puntuación determinista de 0-100 con estado de evidencia explícito. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
 
 ## Matriz de compatibilidad
 
@@ -52,11 +52,12 @@ prepare_run.py -> run.json + paquetes de escaño mutuamente ciegos
   -> dos pasos estrictos del Escaño 08 por lector, con prueba de contexto y hash de la primera lectura
   -> execution-receipt.json prueba subagentes nativos, aislamiento, despachos y degradación
   -> validación mediante seat-output.schema.json
-  -> verify_quotes.py comprueba citas literales e invalida los criterios fallidos
+  -> verify_quotes.py comprueba citas; un criterio fallido puede volver una sola vez a su escaño original, solo para sus quotes
+  -> repair_quotes.py congela todos los campos del dictamen y vuelve a verificar todo, solo si se pidió una reparación
   -> derive_report.py correlaciona todos los recibos y produce un informe formal o un diagnóstico
 ```
 
-La entrada de cierre `verify_quotes.py` y la auditoría autónoma `verify-quotes.py` comparten un motor Tier 1–5. Tier 1 exacto, Tier 2 normalizado y Tier 3 con elipsis sujeto a longitudes mínimas pueden validar; Tier 4 solo produce un candidato no aprobado para arbitraje humano y Tier 5 invalida de forma definitiva. El recibo estructurado conserva el tier real, y Tier 4/5 nunca entra en la derivación de bandas.
+La entrada de cierre `verify_quotes.py` y la auditoría autónoma `verify-quotes.py` comparten un motor Tier 1–5 y ejecutan los cinco niveles de forma predeterminada. Tier 1 exacto, Tier 2 normalizado y Tier 3 con elipsis sujeto a longitudes mínimas pueden validar; Tier 4 solo produce un localizador no aprobado y Tier 5 invalida de forma definitiva. El recibo estructurado conserva el tier real, y Tier 4/5 nunca entra directamente en la derivación de bandas. La versión 0.5.3 añade un único reintento auditable limitado a citas: el escaño original solo puede devolver ids de criterios y `quotes` de reemplazo; `repair_quotes.py` congela todos los campos del dictamen y vuelve a verificar todo. Se prohíben un segundo reintento y cualquier override manual.
 
 `prepare_run.py` acepta `--genre memoir|other` (`memoir` por defecto) y `--readers=N` (1 por defecto). El preset `standard` activa los Escaños 01 a 09 y 11. `--source` satisface la condición de entrada del Escaño 01. `--brief` hace que `standard` añada el Escaño 10 y lo activa cuando `full` o `custom(...)` ya lo selecciona; `quick` no se amplía solo por recibir un brief. La base `quick` es 01, 02, 03 y 08, pero una ejecución de memorias añade automáticamente el Escaño 11 de ética; sin el núcleo literario, su banda literaria formal es N/A. `full` cubre los Escaños 01 a 11 y cualquier source o brief ausente se declara como brecha de cobertura. Excluir explícitamente el Escaño 11 de un `custom(...)` de memorias también genera una advertencia.
 
@@ -68,9 +69,11 @@ Cada lector `lit-naive-reader` sigue un protocolo estricto de dos pasos. El paso
 
 `derive_report.py` solo produce `formal=true` cuando se prueban subagentes nativos, `degraded=false`, están completos todos los despachos, salidas y pruebas del Escaño 08, coinciden los digests de entrada y los recibos, y `coverage_gaps=[]`. Toda degradación, despacho fallido o no aislado, artefacto ausente o cita invalidada produce un diagnóstico con `bands.fidelity=null`, `bands.literary=null` y recomendación `仅诊断`. Este `null` diagnóstico es distinto del N/A formal de una dimensión legítimamente fuera de alcance.
 
-## Vista de puntuación restaurada (0.5.2)
+## Vista de puntuación con estado de evidencia (0.5.4)
 
-La versión 0.5.2 restaura la fórmula determinista v0.4.1 dentro del runtime cerrado 0.5. Los escaños siguen sin asignar números: solo entregan vectores de criterios. Únicamente `derive_report.py` puede producir `derived-report.json.scores`, y solo en una ejecución formalmente cerrada que cubra por completo los escaños 03/04/05/06/07/08/09. En ejecuciones incompletas, degradadas o diagnósticas, `scores.available=false` y el total y las dimensiones son `null`.
+La versión 0.5.2 restauró la fórmula determinista v0.4.1; la versión 0.5.4 separa la disponibilidad de la puntuación de la verificación de citas. Los escaños siguen sin asignar números: solo entregan vectores de criterios, y únicamente `derive_report.py` puede producir `derived-report.json.scores`. Cuando los escaños 03/04/05/06/07/08/09 tienen dictámenes estructurados completos, despachos aislados y la prueba de dos pasos del Escaño 08, se emite la vista numérica. Las entradas totalmente verificadas usan `status=verified`; una cita invalidada ya no borra la puntuación, sino que el dictamen congelado se calcula con `status=provisional` y cada criterio afectado aparece en `status_reasons`. `scores.available=false` queda reservado para ausencias reales de escaños, dictámenes o pruebas de ejecución fiables, y para dictámenes de puntuación no resueltos.
+
+Sin `--source`, solo la fidelidad queda sin evaluar (`dimensions.fidelity=null`); las demás dimensiones y el total siguen disponibles. Si existe source, una cita de fidelidad incorrecta todavía produce una puntuación de fidelidad provisional desde el dictamen congelado. Las citas invalidadas permanecen excluidas de las bandas formales, las alertas rojas y las revisiones.
 
 Las cuatro dimensiones literarias parten de 90, con deducciones mecánicas para problemas core/extended y topes veto. La limpieza de IA parte de 100, la experiencia lectora de 85 y la originalidad suma +5, +3 o +0 sin restar. El total combina estos resultados, con un tope final de fidelidad de 75 para B y 45 para C cuando existe fuente. Las calificaciones de la vista 0-100 van de A a D. **Las puntuaciones se derivan mecánicamente de los vectores de criterios; los escaños nunca producen números.**
 
@@ -83,14 +86,24 @@ python3 core/lit-panel/scripts/prepare_run.py text.md \
 # Despachar subagentes nativos y escribir execution-receipt.json; después:
 python3 core/lit-panel/scripts/validate_execution_receipt.py runs/example/execution-receipt.json
 python3 core/lit-panel/scripts/verify_quotes.py runs/example/seat-outputs runs/example/text.txt \
-  --output runs/example/verification-receipt.json
+  --output runs/example/verification-receipt.initial.json \
+  --repair-request runs/example/quote-repair-request.json
+# Si requests no está vacío, recopilar quote-repair-patches/*.json de los escaños originales y después:
+python3 core/lit-panel/scripts/repair_quotes.py \
+  runs/example/seat-outputs runs/example/quote-repair-patches \
+  runs/example/verification-receipt.initial.json runs/example/text.txt \
+  --output-dir runs/example/repaired-seat-outputs \
+  --verification-output runs/example/verification-receipt.json \
+  --repair-receipt runs/example/quote-repair-receipt.json
 python3 core/lit-panel/scripts/derive_report.py \
-  runs/example/seat-outputs runs/example/verification-receipt.json \
+  <seat-output-dir> <verification-receipt.json> \
   runs/example/run.json runs/example/execution-receipt.json \
   core/lit-panel/references/criteria --text runs/example/text.txt \
   --output-json runs/example/derived-report.json \
   --output-markdown runs/example/report.md
 ```
+
+Si no hay criterios invalidados, derive desde `seat-outputs` y `verification-receipt.initial.json`. Tras un intento de reparación, use `repaired-seat-outputs` y el `verification-receipt.json` final; el código de salida 1 sigue siendo diagnóstico y nunca debe iniciar un segundo reintento.
 
 Si existe una source, pase el mismo `--source <archivo-o-directorio>` a `verify_quotes.py` y `derive_report.py`. Si existe un brief, pase también el mismo `--brief <archivo>` a `derive_report.py`. Sus cinco argumentos posicionales son salidas de escaños, recibo de verificación, manifest de ejecución, recibo de ejecución y directorio de criterios; la interfaz anterior ya no es válida. Un digest no nulo de source/brief en `run.json` falla de inmediato si falta el argumento correspondiente o cambió su contenido.
 
@@ -102,10 +115,10 @@ Una ejecución cerrada conserva al menos seis clases de artefactos:
 - `execution-receipt.json`, que prueba aislamiento nativo, despachos, los dos pasos del Escaño 08 y brechas de cobertura;
 - un JSON por escaño conforme a `seat-output.schema.json`;
 - `verification-receipt.json`, que registra cada coincidencia o invalidación de cita;
-- `derived-report.json`, con bandas, `scores`, líneas rojas, revisiones y elementos de arbitraje derivados mecánicamente;
+- `derived-report.json`, con bandas, `scores` y sus `status/status_reasons`, líneas rojas, revisiones y elementos de arbitraje derivados mecánicamente;
 - `report.md`, la crítica formal destinada a personas o una proyección marcada explícitamente como diagnóstico.
 
-Todo dictamen YES/NO exige una cita literal. La validación del esquema y la verificación mecánica preceden a la síntesis; una cita fallida invalida el criterio completo, impide el cierre formal de esa ejecución y no puede influir en una banda formal. Los escaños no pueden asignar puntuaciones, porcentajes ni pesos libres; solo el script cerrado puede derivar `scores` reproducibles de 0-100 con la fórmula v0.4.1. A/B/C/N/A sigue siendo una vista cualitativa independiente.
+Todo dictamen YES/NO exige una cita literal. La validación del esquema y la verificación mecánica preceden a la síntesis; una cita fallida invalida el criterio como evidencia formal, impide el cierre formal de esa ejecución y no puede influir en una banda formal. No borra la vista numérica: el dictamen congelado contribuye a una puntuación provisional claramente señalada. Los escaños no pueden asignar puntuaciones, porcentajes ni pesos libres; solo el script cerrado puede derivar `scores` reproducibles de 0-100 con la fórmula v0.4.1. A/B/C/N/A sigue siendo una vista cualitativa independiente.
 
 ## Arquitectura
 

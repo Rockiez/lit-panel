@@ -149,6 +149,7 @@ python3 scripts/validate_execution_receipt.py <execution-receipt.json>
 
 - `verdict` 只能是 `YES/NO/ABSTAIN/NA`；`severity` 只能是 `high/medium/low/none`。
 - 所有 YES/NO 至少给一条逐字 quote；ABSTAIN/NA 的 severity 必须为 `none`。
+- `NA` 只表示判据的客观适用前提在本文不存在，note 必须说明缺少什么前提；`ABSTAIN` 表示判据适用但证据不足或无法判断。不得把正常的文体选择（例如短文没有双人对白）降级为 ABSTAIN 或问题判定。
 - 多处引文用 `quotes[]` 多项承载，禁止拼接。正文用 `target=text`，source 用 `target=source`。
 - `[风险]` 命中答 YES，未命中答 NO；note 写清“风险命中/未命中”。问题判定必须提供 recommendation。
 - 席 01 每项判据都必须提供结构化 `fidelity_state`，值只能是 `SUPPORTED/PERMISSIBLE_INFERENCE/UNSUPPORTED/CONTRADICTED/UNVERIFIABLE`；不再从 note 前缀推断状态。每条 YES/NO 必须同时给至少一条 `target=text` 与一条 `target=source` 的逐字 quote。
@@ -216,7 +217,7 @@ python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
 
 1. 问题判定=`[通过]` 的 NO，或 `[风险]` 的 YES。
 2. 忠实带：无席 01 为 N/A；高严重度 `CONTRADICTED/UNSUPPORTED` 为 C；其他问题为 B；干净为 A。
-3. 文学带：未完整覆盖 04/05/06/07 为 N/A；任一高严重度 veto 问题为 C；任一其他 veto/core 问题为 B；否则为 A。ABSTAIN 或 veto/core 的 NA 会形成覆盖缺口，不得自动得到 A。
+3. 文学带：未完整覆盖 04/05/06/07 为 N/A；任一高严重度 veto 问题为 C；任一其他 veto/core 问题为 B；否则为 A。ABSTAIN 或 veto 的 NA 会形成覆盖缺口，不得自动得到 A；有明确适用性理由的 core/extended NA 不构成问题，也不阻断带位。
 4. 文学带原为 A 且任一素读者答“不愿意”时，输出 `A候选（待人工确认）`。
 5. 红线=席 01 的高严重度 `CONTRADICTED/UNSUPPORTED`，以及席 02 的高严重度问题。
 6. 人工仲裁包含 ABSTAIN、veto NA、veto 中/低严重度问题、席 11 问题、素读者报警与引文作废项。
@@ -228,16 +229,16 @@ python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
 
 ### 7.1 评分导出（恢复 v0.4.1 合同）
 
-评分是判据向量的确定性视图，不是新的评审意见。闭合变体标识仍为 `formula_version=0.4.1-closed`；报告 schema 1.2 为 `scores` 增加 `status` 与 `status_reasons`。评分可用性不再依赖 `formal`：只要 03/04/05/06/07/08/09 的结构化判定、原生隔离派发和席 08 两步证明完整，就必须输出数值。`status=verified` 表示评分输入的引文均通过；任一引文作废时仍按冻结判定计分，但必须输出 `status=provisional` 并在 `status_reasons` 列出对应 seat/reader/criterion。只有评分所需席位、判据或可信执行证明确实缺失，或评分判据本身为未决 ABSTAIN/核心 NA 时，才允许 `status=unavailable`、`scores.available=false` 和数值 `null`。
+评分是判据向量的确定性视图，不是新的评审意见。闭合变体标识为 `formula_version=0.4.1-closed+always`；报告 schema 1.2 使用 `scores.status` 与 `status_reasons` 披露证据状态。**只要阶段三成功生成报告，就必须输出 0-100 数值总分，不得因 ABSTAIN、NA、引文作废、降级执行、缺少 source、preset 未覆盖全部评分席或局部席位失败而清空分数。** 完整且已核验的评分输入使用 `status=verified`；有明确适用性理由的 core/extended NA 视为完整判定，不扣分、不降低评分状态。ABSTAIN、veto NA 或其他覆盖/执行/引文问题使用 `status=provisional`，并逐项列明原因。缺少某一维度时该维度为 `null` 且不冒充已评测：有文学维度时总分按已有文学维度均值继续套用冻结扣分/加分；无文学维度时依次回退到读者体验、AI 洁净度、忠实度；完全没有可用评分维度时使用固定诊断基线 50。正式带位仍由完整证据门禁独立控制。
 
 忠实度是唯一来源条件维度：未提供 source 时 `dimensions.fidelity=null`，其余维度和总分照常形成；提供 source 后，即使忠实席引文作废，也必须根据被冻结的 `fidelity_state/verdict/severity` 形成暂定忠实度分并标注 `provisional`。来源存在但忠实判定为 UNVERIFIABLE/未决时，仅忠实度保持 `null`，其他完整评分仍可输出暂定状态。
 
-1. 结构、人物、语言、情感分别对应 04/05/06/07，基准 90。普通 core 问题每项扣 12，extended 问题每项扣 5；任一 high veto 问题把该维度封顶 45，任一 medium/low veto 问题封顶 65。扣分与封顶都只使用核验有效的问题判定。
+1. 结构、人物、语言、情感分别对应 04/05/06/07，已覆盖维度基准 90。普通 core 问题每项扣 12，extended 问题每项扣 5；任一 high veto 问题把该维度封顶 45，任一 medium/low veto 问题封顶 65。ABSTAIN/NA 不扣分；只有 ABSTAIN 与 veto NA 作为未决状态进入 `status_reasons`，有明确适用性理由的 core/extended NA 为中性完成态。扣分与封顶使用冻结的结构化问题判定，引文作废时只降低证据状态，不静默改写判定。
 2. AI 洁净度基准 100；席 03 每个有效问题扣 3，累计扣分最多 10。
 3. 读者体验基准 85；席 08 每个有效 R 系问题扣 10。多读者时先分别按同一公式计算，再取算术平均值。
 4. 原创性只加不减：O2/O3/O5/O6 全部通过且无任何 O 系问题时加 5；其中至少三项通过且无任何 O 系问题时加 3；其他情况加 0。
 5. 忠实度沿用忠实带映射：A=90、B=65、C=45；无 source 时为 `null`。
-6. 总分=`四个文学维度算术平均值 - AI 洁净度扣分 + 原创性加分`，上限 100、下限 0；最后应用忠实度封顶：忠实 B 最高 75，忠实 C 最高 45。
+6. 全覆盖总分=`四个文学维度算术平均值 - AI 洁净度扣分 + 原创性加分`；部分覆盖时只平均已有文学维度。无文学维度时依次回退到读者体验、AI 洁净度、忠实度；均无时从固定诊断基线 50 起算。总分上限 100、下限 0，最后应用忠实度封顶：忠实 B 最高 75，忠实 C 最高 45。
 7. 分档：A=90–100、A-=85–89、B+=80–84、B=70–79、C+=60–69、C=45–59、D=0–44。中间计算保留实际算术结果，最终维度与总分按脚本的统一归一化规则输出。
 
 干净文学维度固定以 90 为基线；v0.4.1 历史文档中的 95–100 “历史锚点上浮”没有闭合运行输入，0.5.2 不允许 orchestrator 主观决定是否上浮。报告必须原样保留：**分数由判据向量机械导出，评审席不产生任何数字。**
@@ -246,7 +247,7 @@ python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
 
 正式报告至少包含：run/版本与宿主披露、genre/readers、激活/跳过席位、原生执行摘要、席 08 两步证明、忠实带、文学带、总分卡、多维评分、建议、红线、修订包、人工仲裁、每席自由观点与核验统计。报告正文可更自然，但任何判断必须能追溯到 seat JSON 或机械回执。
 
-若 `formal=false`，标题与档案必须明确写“诊断性结果（不得作为正式带位）”，两类 band 显示“未形成”而不是 N/A，并完整列出降级和 coverage gaps。诊断报告仍按上一节独立判断评分可用性：引文作废或未覆盖非评分席不能清空已有分数；可计算时显示已核实或暂定评分，不可计算时才显示“未形成”。诊断仍可保留有效引文、自由观点、修订线索和仲裁项，但不得把暂定评分包装成正式带位。
+若 `formal=false`，标题与档案必须明确写“诊断性结果（不得作为正式带位）”，两类 band 显示“未形成”而不是 N/A，并完整列出降级和 coverage gaps。诊断报告仍必须显示数值总分；不完整、未决或降级输入统一标为暂定并列出 `status_reasons`，缺少的单项维度显示“未评测”，不得把暂定评分包装成正式带位。诊断仍可保留有效引文、自由观点、修订线索和仲裁项。
 
 逐条自查：
 

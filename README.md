@@ -1,6 +1,6 @@
 [简体中文](README.md) | [English](README.en.md) | [Français](README.fr.md) | [Español](README.es.md)
 
-# lit-panel 0.5.4
+# lit-panel 0.5.5
 
 面向中文回忆录与叙事文本的十一席文学评审插件。每个席位运行在真实、隔离的 subagent 上下文中；席位只提交结构化判定和逐字引文，脚本负责运行闭合、schema 校验、引文作废、质性 A/B/C/N/A 带位与带证据状态的确定性 0-100 评分视图。Codex CLI 0.147.0 及以上的 Agent Plugins 是一等安装与发现路径。
 
@@ -61,17 +61,17 @@ prepare_run.py → run.json + 逐席互盲 packets
 
 0.5.3 为作废引文加入一次性、可审计的安全恢复：初次核验可生成 `quote-repair-request.json`，只把对应判据发回原席重新定位原文；返回的 patch 只能包含判据 id 与替换后的 `quotes`。`repair_quotes.py` 机械冻结 verdict、严重度、评语、建议和自由观点，拒绝修改非作废判据，再完整重跑 Tier 1–5。重验仍失败时保持诊断模式，不允许第二次循环或人工强制通过。
 
-`prepare_run.py` 接受 `--genre memoir|other`（默认 `memoir`）与 `--readers=N`（默认 1）。默认 `standard` 启用 01–09 与 11；`--source` 满足忠实席 01 的输入条件，`--brief` 会让 `standard` 自动并入编辑意图席 10，并让已包含 10 的 `full/custom(...)` 激活该席；`quick` 不因 brief 自动扩席。`quick` 的基础集合是 01、02、03、08，但回忆录会自动追加伦理席 11；它不覆盖文学核心席，因此正式文学带为 N/A。`full` 覆盖 01–11，但缺少 source/brief 会以覆盖缺口披露。`custom(...)` 若在回忆录中显式排除 11，也会形成覆盖警告。派生器会从 canonical 判据重建运行计划，并核对执行回执中的每个 packet SHA-256；ABSTAIN 或核心/否决判据的 NA 不能自动形成 A。
+`prepare_run.py` 接受 `--genre memoir|other`（默认 `memoir`）与 `--readers=N`（默认 1）。默认 `standard` 启用 01–09 与 11；`--source` 满足忠实席 01 的输入条件，`--brief` 会让 `standard` 自动并入编辑意图席 10，并让已包含 10 的 `full/custom(...)` 激活该席；`quick` 不因 brief 自动扩席。`quick` 的基础集合是 01、02、03、08，但回忆录会自动追加伦理席 11；它不覆盖文学核心席，因此正式文学带为 N/A。`full` 覆盖 01–11，但缺少 source/brief 会以覆盖缺口披露。`custom(...)` 若在回忆录中显式排除 11，也会形成覆盖警告。派生器会从 canonical 判据重建运行计划，并核对执行回执中的每个 packet SHA-256；ABSTAIN 或 veto NA 不能自动形成 A，有明确适用性理由的 core/extended NA 则为中性完成态。
 
 席 03 的 A7 不是单章判据：只有 `--source` 指向递归包含至少两个文件的跨章节目录时才进入该席派发包；无 source、单文件 source 或仅含一个文件的目录均不激活 A7。
 
-互盲是硬闸门。若宿主不能建立真实独立 subagent 上下文，默认停止正式评审；用户显式允许时只能输出 `degraded=true` 的诊断，不能声称互盲。每位席 08 读者的第二步要么在第一步的同一 context 中 follow-up，要么在新 context 中携带密封首读原文；`execution-receipt.json` 必须记录 `step_2_mode`、两步 context id 与首读 SHA-256。
+互盲是正式带位的硬闸门。若宿主不能建立真实独立 subagent 上下文，默认停止正式评审；用户显式允许时只能输出 `degraded=true` 的诊断和明确标注的暂定分，不能声称互盲。每位席 08 读者的第二步要么在第一步的同一 context 中 follow-up，要么在新 context 中携带密封首读原文；`execution-receipt.json` 必须记录 `step_2_mode`、两步 context id 与首读 SHA-256。
 
 只有 `native_subagents=true`、`degraded=false`、派发和判据输出完整、席 08 证明完整、输入摘要与核验回执一致且 `coverage_gaps=[]` 时，`derive_report.py` 才生成 `formal=true` 的正式带位。任何降级、失败/非隔离派发、未披露缺件或引文作废都会 fail closed：结果为诊断，`bands.fidelity=null`、`bands.literary=null`、建议为“仅诊断”。这与正式运行因未覆盖某一维度而得到的 N/A 不同。
 
-## 带证据状态的评分视图（0.5.4）
+## 始终可用、带证据状态的评分视图（0.5.5）
 
-0.5.2 把 v0.4.1 的确定性评分公式接回闭合运行时；0.5.4 进一步把“能否评分”和“引文是否核实”解耦。评审席仍然零打分，只提交判据向量；只有 `derive_report.py` 可以生成 `derived-report.json.scores`。只要 03/04/05/06/07/08/09 的结构化判定、隔离派发和席 08 两步证明完整，就必须输出数值：引文全部通过时为 `status=verified`，任一引文作废时仍按被冻结的判定计分，但标记 `status=provisional` 并在 `status_reasons` 列出受影响判据。只有评分席位、判据或可信执行证明确实缺失，或评分判据本身未决时，才允许 `scores.available=false`。
+0.5.2 把 v0.4.1 的确定性评分公式接回闭合运行时；0.5.4 将“能否评分”和“引文是否核实”解耦；0.5.5 进一步保证阶段三成功生成的每份报告都有 0-100 数值总分。评审席仍然零打分，只提交判据向量；只有 `derive_report.py` 可以生成 `derived-report.json.scores`。完整且已核验的输入使用 `status=verified`；有明确适用性理由的 core/extended NA 同样视为完整判定。ABSTAIN、veto NA、引文作废、降级执行或未覆盖席位继续按已有判据机械导分，但标记 `status=provisional` 并在 `status_reasons` 逐项披露。缺少的维度显示为未评测，不伪装成已覆盖；完全没有可用评分维度时使用固定诊断基线 50。
 
 未提供 source 时，只把忠实度显示为“未评测”并令 `dimensions.fidelity=null`，其他六个维度和总分照常形成；提供 source 后，即使忠实席引文错误，也会根据原席冻结判定形成暂定忠实度分。引文作废仍会阻断正式 A/B/C 带位、红线和修订结论，暂定评分绝不冒充已核实证据。
 

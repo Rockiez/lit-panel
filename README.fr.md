@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La version 0.5.4 est un plugin de critique littéraire à onze sièges pour les mémoires et les récits en chinois. Chaque siège s’exécute dans un contexte de subagent réel et isolé. Les sièges rendent des jugements structurés accompagnés de citations littérales ; des scripts ferment la chaîne d’exécution, valident les schémas, invalident les citations non vérifiables et dérivent des bandes qualitatives A/B/C/N/A ainsi qu’une vue de score déterministe de 0-100 avec un état de preuve explicite. Agent Plugins est la voie d’installation et de découverte de premier rang avec Codex CLI 0.147.0 ou version ultérieure.
+La version 0.5.5 est un plugin de critique littéraire à onze sièges pour les mémoires et les récits en chinois. Chaque siège s’exécute dans un contexte de subagent réel et isolé. Les sièges rendent des jugements structurés accompagnés de citations littérales ; des scripts ferment la chaîne d’exécution, valident les schémas, invalident les citations non vérifiables et dérivent des bandes qualitatives A/B/C/N/A ainsi qu’une vue de score déterministe de 0-100 avec un état de preuve explicite. Agent Plugins est la voie d’installation et de découverte de premier rang avec Codex CLI 0.147.0 ou version ultérieure.
 
 ## Matrice de compatibilité
 
@@ -69,9 +69,9 @@ Chaque lecteur `lit-naive-reader` suit un protocole strict en deux étapes. L’
 
 `derive_report.py` ne produit `formal=true` que si les subagents natifs sont prouvés, `degraded=false`, tous les dispatchs, sorties et preuves du Siège 08 sont complets, les empreintes d’entrée et reçus concordent, et `coverage_gaps=[]`. Toute dégradation, dispatch en échec ou non isolé, ressource manquante ou citation invalidée donne un diagnostic avec `bands.fidelity=null`, `bands.literary=null` et la recommandation `仅诊断`. Ce `null` de diagnostic diffère du N/A formel d’une dimension légitimement hors périmètre.
 
-## Vue de score avec état de preuve (0.5.4)
+## Vue de score toujours disponible avec état de preuve (0.5.5)
 
-La version 0.5.2 a restauré la formule déterministe v0.4.1 ; la version 0.5.4 sépare la disponibilité du score de la vérification des citations. Les sièges n’attribuent toujours aucun nombre : ils rendent uniquement des vecteurs de critères, et seul `derive_report.py` peut produire `derived-report.json.scores`. Lorsque les sièges 03/04/05/06/07/08/09 disposent de jugements structurés complets, de dispatchs isolés et de la preuve en deux étapes du siège 08, la vue numérique est produite. Les entrées entièrement vérifiées ont `status=verified` ; une citation invalidée n’efface plus le score, mais le jugement gelé est calculé avec `status=provisional` et chaque critère concerné figure dans `status_reasons`. `scores.available=false` est réservé aux véritables absences de sièges, jugements ou preuves d’exécution fiables, ainsi qu’aux jugements de score non résolus.
+La version 0.5.2 a restauré la formule déterministe v0.4.1 ; la version 0.5.4 a séparé la disponibilité du score de la vérification des citations ; la version 0.5.5 garantit un total de 0 à 100 dès que l’étape 3 produit un rapport. Les sièges n’attribuent toujours aucun nombre : seul `derive_report.py` calcule `derived-report.json.scores`. Les entrées complètes utilisent `status=verified` ; un NA core/extended assorti d’un motif d’inapplicabilité explicite est également un jugement neutre achevé. ABSTAIN, un veto NA, les citations invalides, une exécution dégradée ou des sièges non couverts donnent un score mécanique `status=provisional`, avec chaque limite dans `status_reasons`. Les dimensions absentes restent non évaluées et, sans aucune dimension exploitable, le rapport utilise une base diagnostique fixe de 50.
 
 Sans `--source`, seule la fidélité n’est pas évaluée (`dimensions.fidelity=null`) ; les autres dimensions et le total restent disponibles. Si une source existe, une citation de fidélité incorrecte produit tout de même un score de fidélité provisoire à partir du jugement gelé. Les citations invalidées restent exclues des bandes formelles, des alertes rouges et des révisions.
 

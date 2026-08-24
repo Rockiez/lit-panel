@@ -29,7 +29,7 @@
 ## 总分卡
 
 - 评分可用：`[true/false]`
-- 评分状态：`[verified/provisional/unavailable]`
+- 评分状态：`[verified/provisional；阶段三成功生成报告时总有数值分]`
 - 状态原因：`[status_reasons；无则为空数组]`
 - 总分：`[0-100；不可用时写“未形成”，底层值为 null]`
 - 等级：`[A/A-/B+/B/C+/C/D；不可用时写“未形成”]`
@@ -50,7 +50,7 @@
 | AI 洁净度 | `[0-100/null]` | `[A-D/null]` |
 | 读者体验 | `[0-100/null]` | `[A-D/null]` |
 
-引文作废不再清空评分：完整的结构化判定仍按冻结公式计分，`scores.status=provisional`，并逐项显示 `status_reasons`；作废引文不得反向成为正式带位证据。只有评分所需席位、判据或可信执行证明缺失，或评分判据本身未决时，`scores.available=false` 并显示“未形成”。未提供 source 时只让忠实度为 `null`，不影响其他维度和总分。
+阶段三成功生成报告时总分不得为空：ABSTAIN、veto NA、引文作废、未覆盖席位或执行降级都按现有结构化判定机械导出数值，并以 `scores.status=provisional` 逐项显示 `status_reasons`；有明确适用性理由的 core/extended NA 是中性完成态，不扣分也不降低评分状态。作废引文不得反向成为正式带位证据。未覆盖维度显示 `null`，有文学维度时只平均已有维度；否则依次回退到读者体验、AI 洁净度、忠实度，完全没有评分维度时使用固定诊断基线 50。未提供 source 时只让忠实度为 `null`，不影响其他维度和总分。
 
 ## 总评
 

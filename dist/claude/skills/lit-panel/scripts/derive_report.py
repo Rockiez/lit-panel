@@ -34,7 +34,8 @@ LITERARY_DIMENSIONS = {
     "prose": "lit-prose",
     "resonance": "lit-resonance",
 }
-SCORE_FORMULA_VERSION = "0.4.1-closed"
+SCORE_FORMULA_VERSION = "0.4.1-closed+always"
+EMPTY_SCORE_BASELINE = 50
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 3}
 
 
@@ -260,7 +261,8 @@ def derive_scores(
     blockers = [] if blockers is None else blockers
     provisional_reasons = [] if provisional_reasons is None else provisional_reasons
     if legacy_contract and not formal:
-        blockers = ["旧版评分合同要求 formal=true"]
+        blockers = ["旧版评分合同未形成正式带位"]
+    provisional_reasons = blockers + provisional_reasons
     covered_seats = {output["seat"] for output in outputs}
     dimensions: dict[str, dict[str, int | float | str] | None] = {
         "structure": None,
@@ -273,36 +275,27 @@ def derive_scores(
     }
     missing_seats = sorted(SCORING_SEATS - covered_seats)
     if missing_seats:
-        blockers = blockers + ["评分所需席位缺失: " + ", ".join(missing_seats)]
-    available = not blockers
-    if not available:
-        result = {
-            "available": False,
-            "formula_version": SCORE_FORMULA_VERSION,
-            "total": None,
-            "grade": None,
-            "originality_bonus": None,
-            "reader_warning": reader_warning,
-            "dimensions": dimensions,
-        }
-        if not legacy_contract:
-            result.update({
-                "status": "unavailable",
-                "status_reasons": list(dict.fromkeys(blockers + provisional_reasons)),
-            })
-        return result
+        provisional_reasons.append(
+            "评分席位未覆盖（未参与对应维度）: " + ", ".join(missing_seats)
+        )
 
     for dimension, seat in LITERARY_DIMENSIONS.items():
-        dimensions[dimension] = scored_dimension(seat, judgments)
+        if seat in covered_seats:
+            dimensions[dimension] = scored_dimension(seat, judgments)
 
     slop_problems = sum(
         output["seat"] == "lit-slop"
         and is_problem(metadata["polarity"], criterion["verdict"])
         for output, criterion, metadata in judgments
     )
-    slop_penalty = min(10, slop_problems * 3)
-    ai_score = normalized_score(100 - slop_penalty)
-    dimensions["ai_cleanliness"] = {"score": ai_score, "grade": score_grade(ai_score)}
+    slop_penalty = min(10, slop_problems * 3) if "lit-slop" in covered_seats else 0
+    ai_score: int | float | None = None
+    if "lit-slop" in covered_seats:
+        ai_score = normalized_score(100 - slop_penalty)
+        dimensions["ai_cleanliness"] = {
+            "score": ai_score,
+            "grade": score_grade(ai_score),
+        }
 
     reader_scores: list[int | float] = []
     for output in outputs:
@@ -314,11 +307,13 @@ def derive_scores(
             for row_output, criterion, metadata in judgments
         )
         reader_scores.append(normalized_score(85 - problems * 10))
-    reader_score = normalized_score(sum(reader_scores) / len(reader_scores))
-    dimensions["reader_experience"] = {
-        "score": reader_score,
-        "grade": score_grade(reader_score),
-    }
+    reader_score: int | float | None = None
+    if reader_scores:
+        reader_score = normalized_score(sum(reader_scores) / len(reader_scores))
+        dimensions["reader_experience"] = {
+            "score": reader_score,
+            "grade": score_grade(reader_score),
+        }
 
     if fidelity in {"A", "B", "C"}:
         fidelity_score = {"A": 90, "B": 65, "C": 45}[fidelity]
@@ -327,13 +322,28 @@ def derive_scores(
             "grade": score_grade(fidelity_score),
         }
 
-    bonus = originality_bonus(judgments)
+    bonus = originality_bonus(judgments) if "lit-originality" in covered_seats else 0
     literary_scores = [
         dimensions[name]["score"]
         for name in LITERARY_DIMENSIONS
         if dimensions[name] is not None
     ]
-    total = sum(literary_scores) / len(literary_scores) - slop_penalty + bonus
+    if literary_scores:
+        total = sum(literary_scores) / len(literary_scores) - slop_penalty + bonus
+    elif reader_score is not None:
+        total = reader_score - slop_penalty + bonus
+        provisional_reasons.append("未覆盖文学维度，总分回退使用读者体验基线")
+    elif ai_score is not None:
+        total = ai_score + bonus
+        provisional_reasons.append("未覆盖文学维度与读者体验，总分回退使用 AI 洁净度")
+    elif dimensions["fidelity"] is not None:
+        total = dimensions["fidelity"]["score"] + bonus
+        provisional_reasons.append("未覆盖文学维度，总分回退使用忠实度")
+    else:
+        total = EMPTY_SCORE_BASELINE + bonus
+        provisional_reasons.append(
+            f"无可用评分维度，总分使用固定诊断基线 {EMPTY_SCORE_BASELINE}"
+        )
     if fidelity == "C":
         total = min(total, 45)
     elif fidelity == "B":
@@ -384,7 +394,7 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     if scores["available"]:
         warning = " ⚠ 读者预警" if scores["reader_warning"] else ""
         status_label = (
-            "暂定（引文证据降级）"
+            "暂定（判定、覆盖或证据降级）"
             if scores["status"] == "provisional"
             else "已核实"
         )
@@ -420,6 +430,8 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
                 )
             elif key == "fidelity":
                 lines.append("| 忠实度 | 未评测（缺少来源或来源不足） | — |")
+            else:
+                lines.append(f"| {labels[key]} | 未评测（席位未覆盖） | — |")
         lines.append(f"| 原创加分 | +{scores['originality_bonus']} | — |")
         if scores["status_reasons"]:
             lines.extend(["", "评分状态说明："])
@@ -553,12 +565,12 @@ def correlate_run(
     return gaps
 
 
-def scoring_execution_blockers(
+def scoring_execution_issues(
     manifest: dict[str, Any], execution: dict[str, Any], outputs: list[dict[str, Any]]
 ) -> list[str]:
-    blockers: list[str] = []
+    issues: list[str] = []
     if not execution["native_subagents"]:
-        blockers.append("评分执行未证明原生 subagent 隔离")
+        issues.append("评分执行未证明原生 subagent 隔离")
 
     dispatches = {item["packet"]: item for item in execution["dispatches"]}
     scoring_outputs = [
@@ -573,30 +585,30 @@ def scoring_execution_blockers(
         )
         output = actual_outputs.get(identity)
         if output is None:
-            blockers.append(f"评分缺少席位输出: {identity}")
+            issues.append(f"评分缺少席位输出: {identity}")
         else:
             actual_ids = {item["id"] for item in output["criteria"]}
             missing_ids = sorted(set(expected["criteria_ids"]) - actual_ids)
             if missing_ids:
-                blockers.append(f"评分判据缺失: {identity}:{','.join(missing_ids)}")
+                issues.append(f"评分判据缺失: {identity}:{','.join(missing_ids)}")
         packets = [expected["packet"]]
         if expected["seat"] == "lit-naive-reader":
             packets.append(expected["packet"].replace("step-2.json", "step-1.json"))
         for packet in packets:
             dispatch = dispatches.get(packet)
             if dispatch is None:
-                blockers.append(f"评分 packet 缺少执行回执: {packet}")
+                issues.append(f"评分 packet 缺少执行回执: {packet}")
             elif dispatch["status"] != "completed":
-                blockers.append(f"评分 packet 执行失败: {packet}")
+                issues.append(f"评分 packet 执行失败: {packet}")
             elif not dispatch["isolated"]:
-                blockers.append(f"评分 packet 未使用隔离上下文: {packet}")
+                issues.append(f"评分 packet 未使用隔离上下文: {packet}")
 
     proven_readers = {item["reader_id"] for item in execution["naive_readers"]}
     for expected in scoring_outputs:
         reader_id = expected["reader_id"]
         if reader_id is not None and reader_id not in proven_readers:
-            blockers.append(f"评分缺少素读者两步执行证明: {reader_id}")
-    return list(dict.fromkeys(blockers))
+            issues.append(f"评分缺少素读者两步执行证明: {reader_id}")
+    return list(dict.fromkeys(issues))
 
 
 def main() -> int:
@@ -733,7 +745,7 @@ def main() -> int:
         f"未决判据不能形成正式带位: {criterion_key(output, criterion['id'])}"
         for output, criterion, meta in valid
         if criterion["verdict"] == "ABSTAIN"
-        or (criterion["verdict"] == "NA" and meta["tier"] in {"veto", "core"})
+        or (criterion["verdict"] == "NA" and meta["tier"] == "veto")
     ]
     coverage_gaps = list(dict.fromkeys(
         execution["coverage_gaps"]
@@ -761,12 +773,12 @@ def main() -> int:
         final_recommendation = "仅诊断"
 
     unresolved_scoring = [
-        criterion_key(output, criterion["id"])
+        (criterion_key(output, criterion["id"]), criterion["verdict"])
         for output, criterion, meta in judgments
         if output["seat"] in SCORING_SEATS
         and (
             criterion["verdict"] == "ABSTAIN"
-            or (criterion["verdict"] == "NA" and meta["tier"] in {"veto", "core"})
+            or (criterion["verdict"] == "NA" and meta["tier"] == "veto")
         )
     ]
     unresolved_fidelity = [
@@ -778,11 +790,17 @@ def main() -> int:
             or (criterion["verdict"] == "NA" and meta["tier"] in {"veto", "core"})
         )
     ]
-    score_blockers = scoring_execution_blockers(manifest, execution, outputs)
-    score_blockers.extend(f"评分判据未决: {key}" for key in sorted(unresolved_scoring))
     score_provisional_reasons = [
         f"引文核验失败: {key}" for key in sorted(invalidated)
     ]
+    score_provisional_reasons.extend(
+        (
+            f"评分判据未决: {key}"
+            if verdict == "ABSTAIN"
+            else f"评分判据不适用: {key}"
+        )
+        for key, verdict in sorted(unresolved_scoring)
+    )
     score_provisional_reasons.extend(
         f"忠实度未评测: {key} 判定未决" for key in sorted(unresolved_fidelity)
     )
@@ -790,7 +808,7 @@ def main() -> int:
     scores = derive_scores(
         judgments,
         outputs,
-        blockers=score_blockers,
+        blockers=scoring_execution_issues(manifest, execution, outputs),
         provisional_reasons=score_provisional_reasons,
         fidelity=score_fidelity,
         reader_warning=bool(naive_unwilling_outputs),

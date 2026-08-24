@@ -56,7 +56,7 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "formula_version": { "const": "0.4.1-closed" },
+        "formula_version": { "const": "0.4.1-closed+always" },
         "total": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "grade": { "type": ["string", "null"], "enum": ["A", "A-", "B+", "B", "C+", "C", "D", null] },
         "originality_bonus": { "type": ["integer", "null"], "enum": [0, 3, 5, null] },
@@ -103,17 +103,7 @@
               "status": { "enum": ["verified", "provisional"] },
               "total": { "type": "number" },
               "grade": { "enum": ["A", "A-", "B+", "B", "C+", "C", "D"] },
-              "originality_bonus": { "enum": [0, 3, 5] },
-              "dimensions": {
-                "properties": {
-                  "structure": { "$ref": "#/$defs/scoreDimension" },
-                  "character": { "$ref": "#/$defs/scoreDimension" },
-                  "prose": { "$ref": "#/$defs/scoreDimension" },
-                  "resonance": { "$ref": "#/$defs/scoreDimension" },
-                  "ai_cleanliness": { "$ref": "#/$defs/scoreDimension" },
-                  "reader_experience": { "$ref": "#/$defs/scoreDimension" }
-                }
-              }
+              "originality_bonus": { "enum": [0, 3, 5] }
             }
           }
         }

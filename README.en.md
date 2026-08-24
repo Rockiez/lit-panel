@@ -2,7 +2,7 @@
 
 # lit-panel
 
-Version 0.5.4 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive qualitative A/B/C/N/A bands plus a deterministic 0-100 score view with an explicit evidence status. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
+Version 0.5.5 is an eleven-seat literary-review plugin for Chinese memoir and narrative prose. Every seat runs in a real, isolated subagent context. Seats return structured judgments with verbatim evidence; scripts close the run, validate schemas, invalidate unsupported quotes, and derive qualitative A/B/C/N/A bands plus a deterministic 0-100 score view with an explicit evidence status. Agent Plugins is the first-class installation and discovery path on Codex CLI 0.147.0 or newer.
 
 ## Support matrix
 
@@ -69,9 +69,9 @@ Each `lit-naive-reader` follows a strict two-step protocol. Step 1 receives only
 
 `derive_report.py` emits `formal=true` only when native subagents are proven, `degraded=false`, every dispatch/output and Seat 08 proof is complete, input digests and verification receipts match, and `coverage_gaps=[]`. Any degradation, failed or non-isolated dispatch, missing artifact, or invalidated quote produces a diagnostic with `bands.fidelity=null`, `bands.literary=null`, and recommendation `仅诊断`. Diagnostic `null` is distinct from a formal N/A for a dimension that was legitimately out of scope.
 
-## Evidence-status score view (0.5.4)
+## Always-available evidence-status score view (0.5.5)
 
-Version 0.5.2 restored the v0.4.1 deterministic formula; version 0.5.4 separates score availability from quote verification. Review seats still assign no numbers: they only return criterion vectors, and only `derive_report.py` may populate `derived-report.json.scores`. Whenever Seats 03/04/05/06/07/08/09 have complete structured judgments, isolated dispatches, and Seat 08 two-step proof, the numeric view is emitted. Fully verified inputs use `status=verified`; an invalid quote no longer erases the score, but the frozen judgment is scored as `status=provisional` and every affected criterion is listed in `status_reasons`. `scores.available=false` is reserved for genuinely missing scoring seats, judgments, or trusted execution proof, and for unresolved scoring judgments.
+Version 0.5.2 restored the v0.4.1 deterministic formula; version 0.5.4 separated score availability from quote verification; version 0.5.5 guarantees a 0-100 total whenever Stage 3 successfully derives a report. Review seats still assign no numbers: they only return criterion vectors, and only `derive_report.py` may populate `derived-report.json.scores`. Fully verified inputs use `status=verified`; a core/extended NA with an explicit applicability reason is also a completed neutral judgment. ABSTAIN, veto NA, invalid quotes, degraded execution, or uncovered seats still produce a mechanical score as `status=provisional`, with every limitation listed in `status_reasons`. Missing dimensions remain visibly unassessed, and a report with no usable scoring dimension uses a fixed diagnostic baseline of 50.
 
 Without `--source`, only fidelity is unassessed (`dimensions.fidelity=null`); the other dimensions and total remain available. With source material present, a bad fidelity quote still yields a provisional fidelity score from the frozen seat judgment. Invalid quotes remain excluded from formal bands, red flags, and revision findings, so a provisional score never masquerades as verified evidence.
 

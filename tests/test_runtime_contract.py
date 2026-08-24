@@ -73,6 +73,7 @@ def write_outputs(
     problem: tuple[str, str] | None = None,
     bad_quote: tuple[str, str] | None = None,
     omit: tuple[str, str] | None = None,
+    na: tuple[str, str] | None = None,
     omit_recommendation: bool = False,
     abstain_all: bool = False,
 ) -> Path:
@@ -87,8 +88,11 @@ def write_outputs(
             verdict = "YES" if polarity == "[通过]" else "NO"
             severity = "none"
             is_problem = problem == (expected["seat"], criterion_id)
+            is_na = na == (expected["seat"], criterion_id)
             if abstain_all:
                 verdict = "ABSTAIN"
+            elif is_na:
+                verdict = "NA"
             if is_problem:
                 verdict = "NO" if polarity == "[通过]" else "YES"
                 severity = "high"
@@ -99,7 +103,7 @@ def write_outputs(
             )
             quotes = (
                 []
-                if abstain_all
+                if abstain_all or is_na
                 else [{"text": quote, "target": "text", "location": "第1段"}]
             )
             item: dict[str, Any] = {
@@ -387,7 +391,7 @@ class RuntimeContractTests(unittest.TestCase):
                     "available": True,
                     "status": "verified",
                     "status_reasons": [],
-                    "formula_version": "0.4.1-closed",
+                    "formula_version": "0.4.1-closed+always",
                     "total": 95,
                     "grade": "A",
                     "originality_bonus": 5,
@@ -443,8 +447,63 @@ class RuntimeContractTests(unittest.TestCase):
                 )
                 self.assertEqual(result["scores"]["dimensions"][dimension], expected_dimension)
                 markdown = (root / "report.md").read_text(encoding="utf-8")
-                self.assertIn("评分状态：暂定（引文证据降级）", markdown)
+                self.assertIn("评分状态：暂定（判定、覆盖或证据降级）", markdown)
                 self.assertIn(f"引文核验失败: {expected_key}", markdown)
+
+    def test_non_applicable_core_p4_does_not_block_band_or_numeric_score(self) -> None:
+        """Short prose without two speakers must not lose its band or score."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(root, manifest, na=("lit-character", "P4"))
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertTrue(result["formal"])
+            self.assertEqual(result["bands"]["literary"], "A")
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "verified")
+            self.assertEqual(result["scores"]["total"], 95)
+            self.assertEqual(result["scores"]["status_reasons"], [])
+            self.assertEqual(result["arbitration"], [])
+
+    def test_quick_and_non_scoring_custom_runs_always_emit_numeric_scores(self) -> None:
+        """Every successfully derived report needs a transparent numerical fallback."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "quick")
+            seats = write_outputs(root, manifest)
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertEqual(result["scores"]["total"], 85)
+            self.assertIsNone(result["scores"]["dimensions"]["structure"])
+            self.assertTrue(
+                any("读者体验基线" in reason for reason in result["scores"]["status_reasons"])
+            )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "custom(02)")
+            seats = write_outputs(root, manifest)
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertEqual(result["scores"]["total"], 50)
+            self.assertTrue(
+                any("固定诊断基线 50" in reason for reason in result["scores"]["status_reasons"])
+            )
 
     def test_invalid_originality_quote_still_removes_the_bonus_provisionally(self) -> None:
         """Break caught: an unverified originality judgment is dropped from the score vector."""
@@ -526,8 +585,8 @@ class RuntimeContractTests(unittest.TestCase):
             ):
                 self.assertIsNotNone(result["scores"]["dimensions"][dimension])
 
-    def test_missing_one_of_multiple_scoring_readers_still_blocks_the_score(self) -> None:
-        """Break caught: one surviving reader hides a missing reader output and yields a score."""
+    def test_missing_one_of_multiple_scoring_readers_keeps_a_provisional_score(self) -> None:
+        """A partial reader panel must not erase the score or masquerade as verified."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard", readers=2)
@@ -546,8 +605,9 @@ class RuntimeContractTests(unittest.TestCase):
                 derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
             )
 
-            self.assertFalse(result["scores"]["available"])
-            self.assertEqual(result["scores"]["status"], "unavailable")
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertIsInstance(result["scores"]["total"], (int, float))
             self.assertTrue(
                 any("reader-02" in reason for reason in result["scores"]["status_reasons"])
             )
@@ -642,8 +702,12 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertFalse(result["formal"])
             self.assertEqual(result["bands"], {"fidelity": None, "literary": None})
             self.assertEqual(result["recommendation"], "仅诊断")
-            self.assertFalse(result["scores"]["available"])
-            self.assertIsNone(result["scores"]["total"])
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertEqual(result["scores"]["total"], 90)
+            self.assertTrue(
+                any("原生 subagent 隔离" in reason for reason in result["scores"]["status_reasons"])
+            )
 
     def test_forged_receipt_and_undisclosed_partial_criteria_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -760,7 +824,7 @@ class RuntimeContractTests(unittest.TestCase):
     def test_abstentions_cannot_form_a_and_brief_is_digest_bound(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            run_dir, manifest = prepare(root, "custom(04,05,06,07)")
+            run_dir, manifest = prepare(root, "standard")
             seats = write_outputs(root, manifest, abstain_all=True)
             receipt = verify(root, seats)
             execution = write_execution(root, manifest, seats)
@@ -770,6 +834,12 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertFalse(result["formal"])
             self.assertEqual(result["bands"], {"fidelity": None, "literary": None})
             self.assertEqual(result["recommendation"], "仅诊断")
+            self.assertTrue(result["scores"]["available"])
+            self.assertEqual(result["scores"]["status"], "provisional")
+            self.assertEqual(result["scores"]["total"], 90)
+            self.assertTrue(
+                any("评分判据未决" in reason for reason in result["scores"]["status_reasons"])
+            )
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

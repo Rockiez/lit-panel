@@ -1,6 +1,6 @@
 {
   "name": "lit-panel",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "十一席原生 Agent 并行互盲文学评审，以 schema、逐字核验、质性带位和机械评分形成可复现证据链",
   "author": {
     "name": "Anamnese"

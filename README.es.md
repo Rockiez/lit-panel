@@ -2,7 +2,7 @@
 
 # lit-panel
 
-La versión 0.5.4 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan bandas cualitativas A/B/C/N/A junto con una vista de puntuación determinista de 0-100 con estado de evidencia explícito. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
+La versión 0.5.5 es un plugin de crítica literaria con once escaños para memorias y narrativa en chino. Cada escaño se ejecuta en un contexto de subagente real y aislado. Los escaños entregan dictámenes estructurados con citas literales; los scripts cierran la ejecución, validan los esquemas, invalidan citas sin respaldo y derivan bandas cualitativas A/B/C/N/A junto con una vista de puntuación determinista de 0-100 con estado de evidencia explícito. Agent Plugins es la ruta de instalación y descubrimiento de primer nivel en Codex CLI 0.147.0 o posterior.
 
 ## Matriz de compatibilidad
 
@@ -69,9 +69,9 @@ Cada lector `lit-naive-reader` sigue un protocolo estricto de dos pasos. El paso
 
 `derive_report.py` solo produce `formal=true` cuando se prueban subagentes nativos, `degraded=false`, están completos todos los despachos, salidas y pruebas del Escaño 08, coinciden los digests de entrada y los recibos, y `coverage_gaps=[]`. Toda degradación, despacho fallido o no aislado, artefacto ausente o cita invalidada produce un diagnóstico con `bands.fidelity=null`, `bands.literary=null` y recomendación `仅诊断`. Este `null` diagnóstico es distinto del N/A formal de una dimensión legítimamente fuera de alcance.
 
-## Vista de puntuación con estado de evidencia (0.5.4)
+## Vista de puntuación siempre disponible con estado de evidencia (0.5.5)
 
-La versión 0.5.2 restauró la fórmula determinista v0.4.1; la versión 0.5.4 separa la disponibilidad de la puntuación de la verificación de citas. Los escaños siguen sin asignar números: solo entregan vectores de criterios, y únicamente `derive_report.py` puede producir `derived-report.json.scores`. Cuando los escaños 03/04/05/06/07/08/09 tienen dictámenes estructurados completos, despachos aislados y la prueba de dos pasos del Escaño 08, se emite la vista numérica. Las entradas totalmente verificadas usan `status=verified`; una cita invalidada ya no borra la puntuación, sino que el dictamen congelado se calcula con `status=provisional` y cada criterio afectado aparece en `status_reasons`. `scores.available=false` queda reservado para ausencias reales de escaños, dictámenes o pruebas de ejecución fiables, y para dictámenes de puntuación no resueltos.
+La versión 0.5.2 restauró la fórmula determinista v0.4.1; la versión 0.5.4 separó la disponibilidad de la puntuación de la verificación de citas; la versión 0.5.5 garantiza un total de 0 a 100 cuando la fase 3 genera un informe. Los escaños siguen sin asignar números: solo `derive_report.py` produce `derived-report.json.scores`. Las entradas completas usan `status=verified`; un NA core/extended con un motivo explícito de inaplicabilidad también es un dictamen neutral completo. ABSTAIN, un veto NA, citas inválidas, ejecución degradada o escaños no cubiertos conservan una puntuación mecánica `status=provisional`, con cada límite en `status_reasons`. Las dimensiones ausentes siguen como no evaluadas y, si no hay ninguna dimensión utilizable, se aplica una base diagnóstica fija de 50.
 
 Sin `--source`, solo la fidelidad queda sin evaluar (`dimensions.fidelity=null`); las demás dimensiones y el total siguen disponibles. Si existe source, una cita de fidelidad incorrecta todavía produce una puntuación de fidelidad provisional desde el dictamen congelado. Las citas invalidadas permanecen excluidas de las bandas formales, las alertas rojas y las revisiones.
 

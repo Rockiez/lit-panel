@@ -1,0 +1,6 @@
+{
+  "setup": [
+    "python3 scripts/build_dist.py --check"
+  ],
+  "teardown": []
+}

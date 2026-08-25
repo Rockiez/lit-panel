@@ -101,6 +101,16 @@ def validate_fidelity_semantics(
             raise ContractError(f"{key} 的 UNVERIFIABLE 必须是 ABSTAIN 且 severity=none")
 
 
+def _relocatable_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """派发包中的 *_path 字段绑定生成时的安装位置（插件缓存/检出目录），
+    整体搬迁后绝对路径必然失配；内容真实性由执行回执的 packet_sha256 绑定，
+    canonical 比较只需按文件名核对路径字段。"""
+    return {
+        key: Path(value).name if key.endswith("_path") and isinstance(value, str) else value
+        for key, value in payload.items()
+    }
+
+
 def validate_canonical_run(
     manifest: dict[str, Any],
     execution: dict[str, Any],
@@ -155,7 +165,7 @@ def validate_canonical_run(
     dispatches = {item["packet"]: item for item in execution["dispatches"]}
     for packet_name, canonical_payload in payloads.items():
         packet_path = packets_dir / packet_name
-        if not packet_path.is_file() or read_json(packet_path) != canonical_payload:
+        if not packet_path.is_file() or _relocatable_payload(read_json(packet_path)) != _relocatable_payload(canonical_payload):
             raise ContractError(f"派发包内容不符合 canonical 计划: {packet_name}")
         dispatch = dispatches.get(packet_name)
         if dispatch is not None and dispatch["packet_sha256"] != digest_path(packet_path):

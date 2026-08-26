@@ -19,7 +19,8 @@ tools: Read, Grep, Glob
 1. 读取编排方在提示中给出的判据文件路径（通常为 `skills/lit-panel/references/criteria/07-resonance.md`）。逐条读懂判据的 id、极性、层级（core/extended）、判据句、证据要求。
 2. 通读被评文本全文，留意情绪是被"讲述"出来的还是被"呈现"出来的，情绪高点之后文本做了什么。
 3. 逐条判据裁决：verdict ∈ {YES, NO, ABSTAIN, NA}；每条 NO/YES 凡有断言必附逐字引文。
-4. 按下方输出契约输出，不要输出契约之外的任何内容。
+4. 判据判定全部完成后，读取派发包 `anchor_paths` 列出的三份锚文（`band-a.md`／`band-b.md`／`band-c.md`），只对照它们的**写法**而非素材，给出本维度（情感与抵达）的锚定对比：从 `接近A/介于A-B/接近B/介于B-C/低于C` 中选一个带位标签，再给一条被评文本的逐字引文和一句说明它与哪份锚文的哪种写法对照的理由。锚文是纯合成校准材料，不是被评文本——不要对锚文本身下判据，也不要把锚文里的句子当作被评文本的引文。
+5. 按下方输出契约输出，不要输出契约之外的任何内容。
 
 ## 输出契约
 
@@ -28,6 +29,8 @@ tools: Read, Grep, Glob
 只输出派发包 `active_criteria_ids` 中列出的判据，不能自行补回未激活判据。
 
 逐条输出 `id/verdict/severity/quotes/note`，问题判定另给 `recommendation`。`verdict` 仅可为 `YES/NO/ABSTAIN/NA`；所有 YES/NO 至少给一条逐字 quote；ABSTAIN/NA 的 severity 必须为 `none`。多处引文分别写入 `quotes[]`，正文使用 `target=text`，来源素材使用 `target=source`，每条都给 location。`[风险]` 命中答 YES、未命中答 NO。自由专业直觉写入 `free_view`。完成后由 orchestrator 运行 `scripts/validate_seat_output.py` 与 `scripts/verify_quotes.py`；不得自行假设格式错误会被修补。
+
+锚定对比写入可选的 `anchor_comparison`：`placement`／`rationale`／`quote` 三个字段必须齐全，`placement` 只能取 `接近A/介于A-B/接近B/介于B-C/低于C` 之一，`rationale` 非空且写明与哪份锚文的哪种写法对照，`quote` 是被评文本的逐字引文且 `target` 固定为 `text`。该字段是离散标签而非数值，不进入评分，也不改变机械带位；只有当它与机导文学带偏差 ≥2 档时进入人工仲裁区。
 
 ## 互盲纪律
 

@@ -38,3 +38,7 @@ $ARGUMENTS
 ## 对比规则提要
 
 每席对 A/B 做偏好判断，且需**换序判两次**（先 A-B 后 B-A）；两次结论不一致时该席记 TIE（除非传入 `--fast-compare`，改为每席单评一次+自查声明，见上方参数表）。最终输出各席偏好、理由与全团分布，**禁止输出总比分**。完整规则以 `skills/lit-panel/SKILL.md` 为准，本命令不重复定义。
+
+## 偏好对沉淀
+
+本轮结束、用户表态选定偏好的那一篇之后，把该偏好对追加一行到本地 `evals/preference_pairs.jsonl`，字段为 `text_a`、`text_b`、`per_dim_panel_verdicts`、`user_pick`、`date`。该文件是 gitignored 的本地文件，不入库、不随包分发，也不影响本轮任何带位或评分；它只用于周期性统计判官-用户一致率，找出与用户真实取舍系统性背离的席位。用户未表态时不得代填 `user_pick`。

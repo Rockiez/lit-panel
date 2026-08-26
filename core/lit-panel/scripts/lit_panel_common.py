@@ -24,6 +24,8 @@ FIDELITY_STATES = {
     "CONTRADICTED",
     "UNVERIFIABLE",
 }
+CORE_LITERARY_SEATS = {"lit-structure", "lit-character", "lit-prose", "lit-resonance"}
+ANCHOR_PLACEMENTS = {"接近A", "介于A-B", "接近B", "介于B-C", "低于C"}
 
 
 def _load_tiered_quote_verifier() -> Any:
@@ -104,7 +106,8 @@ def criterion_key(data: dict[str, Any], criterion_id: str) -> str:
 def validate_seat_output(data: Any, expected_seat: str | None = None) -> dict[str, Any]:
     require(isinstance(data, dict), "席位输出必须是 JSON object")
     allowed = {
-        "schema_version", "run_id", "seat", "reader_id", "phase", "criteria", "free_view", "reader"
+        "schema_version", "run_id", "seat", "reader_id", "phase", "criteria", "free_view",
+        "reader", "anchor_comparison",
     }
     require(not (set(data) - allowed), f"席位输出包含未知字段: {sorted(set(data) - allowed)}")
     for field in ("schema_version", "run_id", "seat", "phase", "criteria", "free_view"):
@@ -180,6 +183,28 @@ def validate_seat_output(data: Any, expected_seat: str | None = None) -> dict[st
         else:
             require("fidelity_state" not in item,
                     f"{prefix} 只有 lit-fidelity 可包含 fidelity_state")
+
+    if "anchor_comparison" in data:
+        require(data["seat"] in CORE_LITERARY_SEATS,
+                "anchor_comparison 只能由文学带核心席 04/05/06/07 输出")
+        comparison = data["anchor_comparison"]
+        require(isinstance(comparison, dict), "anchor_comparison 必须是 object")
+        require(set(comparison) == {"placement", "rationale", "quote"},
+                "anchor_comparison 必须且只能包含 placement/rationale/quote")
+        require(comparison["placement"] in ANCHOR_PLACEMENTS,
+                "anchor_comparison.placement 非法")
+        require(isinstance(comparison["rationale"], str) and comparison["rationale"],
+                "anchor_comparison.rationale 必须非空")
+        quote = comparison["quote"]
+        require(isinstance(quote, dict), "anchor_comparison.quote 必须是 object")
+        require(set(quote) == {"text", "target", "location"},
+                "anchor_comparison.quote 必须且只能包含 text/target/location")
+        require(isinstance(quote["text"], str) and quote["text"],
+                "anchor_comparison.quote.text 必须非空")
+        require(quote["target"] == "text",
+                "anchor_comparison.quote.target 必须为 text（锚定对比引用被评文本）")
+        require(isinstance(quote["location"], str) and quote["location"],
+                "anchor_comparison.quote.location 必须非空")
 
     if data["phase"] == "naive-reader-step-2":
         require(data["seat"] == "lit-naive-reader", "naive-reader-step-2 只能属于 lit-naive-reader")

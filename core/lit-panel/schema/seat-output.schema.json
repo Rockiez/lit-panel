@@ -16,9 +16,23 @@
       "items": { "$ref": "#/$defs/criterion" }
     },
     "free_view": { "type": "string" },
-    "reader": { "$ref": "#/$defs/reader" }
+    "reader": { "$ref": "#/$defs/reader" },
+    "anchor_comparison": { "$ref": "#/$defs/anchorComparison" }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "seat": {
+            "enum": ["lit-structure", "lit-character", "lit-prose", "lit-resonance"]
+          }
+        },
+        "required": ["seat"]
+      },
+      "else": {
+        "properties": { "anchor_comparison": false }
+      }
+    },
     {
       "if": {
         "properties": { "phase": { "const": "naive-reader-step-2" } },
@@ -81,6 +95,21 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "willing_to_share": { "enum": ["愿意", "不愿意"] }
+      }
+    },
+    "anchorComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placement", "rationale", "quote"],
+      "properties": {
+        "placement": { "enum": ["接近A", "介于A-B", "接近B", "介于B-C", "低于C"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "quote": {
+          "allOf": [
+            { "$ref": "#/$defs/quote" },
+            { "properties": { "target": { "const": "text" } } }
+          ]
+        }
       }
     },
     "quote": {

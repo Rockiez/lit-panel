@@ -34,9 +34,21 @@ LITERARY_DIMENSIONS = {
     "prose": "lit-prose",
     "resonance": "lit-resonance",
 }
-SCORE_FORMULA_VERSION = "0.4.1-closed+always"
+SCORE_FORMULA_VERSION = "0.5.0-anchored"
 EMPTY_SCORE_BASELINE = 50
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 3}
+LITERARY_BASELINE = 70
+CRAFT_SETS = {
+    "lit-structure": frozenset({"N3", "TW2", "TW4", "SC1"}),
+    "lit-character": frozenset({"P2", "P3", "P4", "P7"}),
+    "lit-prose": frozenset({"L5", "L7", "TW3"}),
+    "lit-resonance": frozenset({"E3", "E6", "E7", "TW14"}),
+}
+CRAFT_BONUS_TIERS = ((1.0, 20), (0.6, 12), (0.3, 6))
+CRAFT_GATE_RATIO = 0.6
+BAND_RANKS = {"A": 3.0, "A候选（待人工确认）": 3.0, "B": 2.0, "C": 1.0}
+PLACEMENT_RANKS = {"接近A": 3.0, "介于A-B": 2.5, "接近B": 2.0, "介于B-C": 1.5, "低于C": 1.0}
+ANCHOR_DIVERGENCE_RANKS = 2.0
 
 
 def finding(output: dict[str, Any], criterion: dict[str, Any]) -> dict[str, Any]:
@@ -162,20 +174,89 @@ def validate_canonical_run(
             raise ContractError(f"执行回执 packet_sha256 不匹配: {packet_name}")
 
 
+def craft_ratio(
+    seat: str,
+    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+) -> float:
+    """Share of the seat's positive craft criteria that were actually affirmed."""
+    craft_ids = CRAFT_SETS.get(seat)
+    if not craft_ids:
+        return 0.0
+    affirmed = {
+        criterion["id"]
+        for output, criterion, _ in valid
+        if output["seat"] == seat
+        and criterion["id"] in craft_ids
+        and criterion["verdict"] == "YES"
+    }
+    return len(affirmed) / len(craft_ids)
+
+
+def craft_bonus(ratio: float) -> int:
+    return next((bonus for floor, bonus in CRAFT_BONUS_TIERS if ratio >= floor), 0)
+
+
+def craft_gate_passed(
+    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+) -> bool:
+    return all(craft_ratio(seat, valid) >= CRAFT_GATE_RATIO for seat in LITERARY_SEATS)
+
+
+def literary_band_detail(
+    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+    covered_seats: set[str],
+    naive_unwilling: bool,
+) -> tuple[str, bool]:
+    """Return the band plus whether a clean run was demoted purely by the craft gate."""
+    if not LITERARY_SEATS.issubset(covered_seats):
+        return "N/A", False
+    rows = [row for row in valid if row[0]["seat"] in LITERARY_SEATS]
+    problems = [row for row in rows if is_problem(row[2]["polarity"], row[1]["verdict"])]
+    if any(row[2]["tier"] == "veto" and row[1]["severity"] == "high" for row in problems):
+        return "C", False
+    if any(row[2]["tier"] in {"veto", "core"} for row in problems):
+        return "B", False
+    if not craft_gate_passed(valid):
+        return "B", True
+    return "A候选（待人工确认）" if naive_unwilling else "A", False
+
+
 def literary_band(
     valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
     covered_seats: set[str],
     naive_unwilling: bool,
 ) -> str:
-    if not LITERARY_SEATS.issubset(covered_seats):
-        return "N/A"
-    rows = [row for row in valid if row[0]["seat"] in LITERARY_SEATS]
-    problems = [row for row in rows if is_problem(row[2]["polarity"], row[1]["verdict"])]
-    if any(row[2]["tier"] == "veto" and row[1]["severity"] == "high" for row in problems):
-        return "C"
-    if any(row[2]["tier"] in {"veto", "core"} for row in problems):
-        return "B"
-    return "A候选（待人工确认）" if naive_unwilling else "A"
+    return literary_band_detail(valid, covered_seats, naive_unwilling)[0]
+
+
+def anchor_arbitration(outputs: list[dict[str, Any]], literary: str | None) -> list[dict[str, Any]]:
+    """Flag seats whose anchor placement disagrees with the derived band by ≥2 ranks."""
+    band_rank = BAND_RANKS.get(literary or "")
+    if band_rank is None:
+        return []
+    items: list[dict[str, Any]] = []
+    for output in sorted(outputs, key=output_identity):
+        comparison = output.get("anchor_comparison")
+        if not isinstance(comparison, dict):
+            continue
+        placement = comparison.get("placement")
+        placement_rank = PLACEMENT_RANKS.get(placement or "")
+        if placement_rank is None:
+            continue
+        if abs(band_rank - placement_rank) < ANCHOR_DIVERGENCE_RANKS:
+            continue
+        items.append({
+            "seat": output["seat"],
+            "reader_id": output.get("reader_id"),
+            "criterion_id": "ANCHOR",
+            "severity": "none",
+            "reason": (
+                f"席位 {output['seat']} 锚定对比背离："
+                f"对照带位 {placement} 与机导文学带 {literary} 偏差 ≥2 档"
+            ),
+            "recommendation": "人工复核锚文对照与判据向量之间的冲突",
+        })
+    return items
 
 
 def recommendation(fidelity: str, literary: str) -> str:
@@ -217,7 +298,7 @@ def scored_dimension(
 ) -> dict[str, int | float | str]:
     rows = [row for row in valid if row[0]["seat"] == seat]
     problems = [row for row in rows if is_problem(row[2]["polarity"], row[1]["verdict"])]
-    value = 90
+    value = LITERARY_BASELINE + craft_bonus(craft_ratio(seat, valid))
     cap = 100
     for _, criterion, metadata in problems:
         if metadata["tier"] == "veto":
@@ -329,7 +410,8 @@ def derive_scores(
         if dimensions[name] is not None
     ]
     if literary_scores:
-        total = sum(literary_scores) / len(literary_scores) - slop_penalty + bonus
+        mean_after_slop = sum(literary_scores) / len(literary_scores) - slop_penalty
+        total = min(mean_after_slop, min(literary_scores)) + bonus
     elif reader_score is not None:
         total = reader_score - slop_penalty + bonus
         provisional_reasons.append("未覆盖文学维度，总分回退使用读者体验基线")
@@ -371,8 +453,13 @@ def display_finding(item: dict[str, Any]) -> str:
     return f"{identity} / {item['criterion_id']}：{item['reason']}"
 
 
-def write_markdown(path: Path, report: dict[str, Any]) -> None:
+def write_markdown(
+    path: Path, report: dict[str, Any], *, craft_gate_demoted: bool = False
+) -> None:
     host = report["execution"]["host"]
+    literary_line = report["bands"]["literary"] or "未形成"
+    if craft_gate_demoted:
+        literary_line = "B（记录型：未检出缺陷，但正向工艺证据未达 A 门）"
     lines = [
         "# lit-panel 评审报告",
         "",
@@ -383,7 +470,7 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- 原生 subagents：{'是' if report['execution']['native_subagents'] else '否'}",
         f"- 降级执行：{'是' if report['execution']['degraded'] else '否'}",
         f"- 忠实带：{report['bands']['fidelity'] or '未形成'}",
-        f"- 文学带：{report['bands']['literary'] or '未形成'}",
+        f"- 文学带：{literary_line}",
         f"- 决策建议：{report['recommendation']}",
         f"- 引文核验：通过 {report['verification']['verified']}，作废 {report['verification']['invalidated']}",
         "",
@@ -765,12 +852,17 @@ def main() -> int:
     covered_seats = {output["seat"] for output in outputs}
     if formal:
         fidelity: str | None = fidelity_band(valid)
-        literary: str | None = literary_band(valid, covered_seats, bool(naive_unwilling_outputs))
-        final_recommendation = recommendation(fidelity, literary)
+        band, craft_gate_demoted = literary_band_detail(
+            valid, covered_seats, bool(naive_unwilling_outputs)
+        )
+        literary: str | None = band
+        final_recommendation = recommendation(fidelity, band)
     else:
         fidelity = None
         literary = None
+        craft_gate_demoted = False
         final_recommendation = "仅诊断"
+    arbitration.extend(anchor_arbitration(outputs, literary))
 
     unresolved_scoring = [
         (criterion_key(output, criterion["id"]), criterion["verdict"])
@@ -857,7 +949,7 @@ def main() -> int:
         },
     }
     write_json(args.output_json, report)
-    write_markdown(args.output_markdown, report)
+    write_markdown(args.output_markdown, report, craft_gate_demoted=craft_gate_demoted)
     print(
         f"REPORT: formal={str(formal).lower()} fidelity={fidelity or 'none'} "
         f"literary={literary or 'none'} recommendation={final_recommendation} "

@@ -17,9 +17,29 @@ SOURCE = ROOT / "tests" / "synthetic" / "source.md"
 BRIEF = ROOT / "tests" / "synthetic" / "brief.md"
 
 sys.path.insert(0, str(SCRIPTS))
-from lit_panel_common import parse_criteria  # noqa: E402
+from lit_panel_common import ContractError, parse_criteria, validate_seat_output  # noqa: E402
 
 METADATA = parse_criteria(SKILL / "references" / "criteria")
+CRAFT_SETS = {
+    "lit-structure": ("N3", "TW2", "TW4", "SC1"),
+    "lit-character": ("P2", "P3", "P4", "P7"),
+    "lit-prose": ("L5", "L7", "TW3"),
+    "lit-resonance": ("E3", "E6", "E7", "TW14"),
+}
+ALL_CRAFT_IDS = {
+    (seat, criterion_id)
+    for seat, criterion_ids in CRAFT_SETS.items()
+    for criterion_id in criterion_ids
+}
+
+
+def selection(value: tuple[str, str] | set[tuple[str, str]] | None) -> set[tuple[str, str]]:
+    """Accept either a single (seat, criterion) pair or a set of them."""
+    if value is None:
+        return set()
+    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], str):
+        return {value}
+    return set(value)
 
 
 def run(*args: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
@@ -70,13 +90,18 @@ def write_outputs(
     root: Path,
     manifest: dict[str, Any],
     *,
-    problem: tuple[str, str] | None = None,
+    problem: tuple[str, str] | set[tuple[str, str]] | None = None,
     bad_quote: tuple[str, str] | None = None,
     omit: tuple[str, str] | None = None,
-    na: tuple[str, str] | None = None,
+    na: tuple[str, str] | set[tuple[str, str]] | None = None,
     omit_recommendation: bool = False,
     abstain_all: bool = False,
+    problem_severity: str = "high",
+    anchor: dict[str, dict[str, Any]] | None = None,
 ) -> Path:
+    problems = selection(problem)
+    nas = selection(na)
+    anchor = anchor or {}
     seats = root / "seats"
     seats.mkdir()
     for expected in manifest["expected_outputs"]:
@@ -87,15 +112,15 @@ def write_outputs(
             polarity = METADATA[(expected["seat"], criterion_id)]["polarity"]
             verdict = "YES" if polarity == "[通过]" else "NO"
             severity = "none"
-            is_problem = problem == (expected["seat"], criterion_id)
-            is_na = na == (expected["seat"], criterion_id)
+            is_problem = (expected["seat"], criterion_id) in problems
+            is_na = (expected["seat"], criterion_id) in nas
             if abstain_all:
                 verdict = "ABSTAIN"
             elif is_na:
                 verdict = "NA"
             if is_problem:
                 verdict = "NO" if polarity == "[通过]" else "YES"
-                severity = "high"
+                severity = problem_severity
             quote = (
                 "原文中不存在的逐字引文"
                 if bad_quote == (expected["seat"], criterion_id)
@@ -136,6 +161,8 @@ def write_outputs(
             "criteria": criteria,
             "free_view": "分席独立质性观点。",
         }
+        if expected["seat"] in anchor:
+            output["anchor_comparison"] = anchor[expected["seat"]]
         if expected["reader_id"] is not None:
             output["reader_id"] = expected["reader_id"]
             output["reader"] = {
@@ -391,7 +418,7 @@ class RuntimeContractTests(unittest.TestCase):
                     "available": True,
                     "status": "verified",
                     "status_reasons": [],
-                    "formula_version": "0.4.1-closed+always",
+                    "formula_version": "0.5.0-anchored",
                     "total": 95,
                     "grade": "A",
                     "originality_bonus": 5,
@@ -451,7 +478,12 @@ class RuntimeContractTests(unittest.TestCase):
                 self.assertIn(f"引文核验失败: {expected_key}", markdown)
 
     def test_non_applicable_core_p4_does_not_block_band_or_numeric_score(self) -> None:
-        """Short prose without two speakers must not lose its band or score."""
+        """Short prose without two speakers must not lose its band or score.
+
+        P4 is a craft criterion, so an NA legitimately costs its seat the full craft
+        bonus (character 70+12=82) and, through the bottleneck, drops the total to 87.
+        The band and the verified status are what must survive.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -466,7 +498,10 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["bands"]["literary"], "A")
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "verified")
-            self.assertEqual(result["scores"]["total"], 95)
+            self.assertEqual(
+                result["scores"]["dimensions"]["character"], {"score": 82, "grade": "B+"}
+            )
+            self.assertEqual(result["scores"]["total"], 87)
             self.assertEqual(result["scores"]["status_reasons"], [])
             self.assertEqual(result["arbitration"], [])
 
@@ -613,7 +648,11 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
     def test_scorecard_deducts_an_ordinary_core_problem(self) -> None:
-        """Break caught: ordinary core failures stop reducing their literary dimension."""
+        """Break caught: ordinary core failures stop reducing their literary dimension.
+
+        N1 is deliberately a non-craft core row: structure keeps its full craft bonus
+        (70+20−12=78) and the bottleneck pulls the total to min(87, 78)+5 = 83.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -628,7 +667,7 @@ class RuntimeContractTests(unittest.TestCase):
                 result["scores"]["dimensions"]["structure"],
                 {"score": 78, "grade": "B"},
             )
-            self.assertEqual(result["scores"]["total"], 92)
+            self.assertEqual(result["scores"]["total"], 83)
             self.assertEqual(result["bands"]["literary"], "B")
 
     def test_scorecard_applies_ai_penalty_without_double_counting(self) -> None:
@@ -685,6 +724,189 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["scores"]["total"], 45)
             self.assertEqual(result["scores"]["grade"], "C")
             self.assertEqual(result["recommendation"], "重写建议")
+
+    def test_record_type_run_without_craft_evidence_is_demoted_to_b(self) -> None:
+        """A flawless run that never affirms positive craft cannot buy an A."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(root, manifest, na=ALL_CRAFT_IDS)
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertTrue(result["formal"])
+            self.assertEqual(result["revisions"], [])
+            self.assertEqual(result["bands"]["literary"], "B")
+            self.assertEqual(result["recommendation"], "修订后交付")
+            for dimension in ("structure", "character", "prose", "resonance"):
+                self.assertEqual(
+                    result["scores"]["dimensions"][dimension],
+                    {"score": 70, "grade": "B"},
+                    dimension,
+                )
+            self.assertEqual(result["scores"]["status"], "verified")
+            self.assertEqual(result["scores"]["total"], 75)
+            markdown = (root / "report.md").read_text(encoding="utf-8")
+            self.assertIn(
+                "- 文学带：B（记录型：未检出缺陷，但正向工艺证据未达 A 门）", markdown
+            )
+
+    def test_total_follows_the_weakest_literary_dimension_not_the_mean(self) -> None:
+        """Break caught: three strong dimensions average away one collapsed dimension."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(
+                root,
+                manifest,
+                problem={("lit-structure", "N1"), ("lit-structure", "N4"),
+                         ("lit-structure", "N5")},
+            )
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            dimensions = result["scores"]["dimensions"]
+            self.assertEqual(dimensions["structure"], {"score": 54, "grade": "C"})
+            for dimension in ("character", "prose", "resonance"):
+                self.assertEqual(dimensions[dimension], {"score": 90, "grade": "A"}, dimension)
+            self.assertEqual(result["scores"]["originality_bonus"], 5)
+            self.assertEqual(result["scores"]["total"], 59)
+            self.assertEqual(result["bands"]["literary"], "B")
+
+    def test_craft_bonus_steps_down_with_the_share_of_affirmed_craft(self) -> None:
+        """The +20/+12/+6 craft ladder and the 0.6 A-gate must move together."""
+        cases = (
+            ({("lit-prose", "TW3")}, {"score": 82, "grade": "B+"}, "A"),
+            ({("lit-prose", "L7"), ("lit-prose", "TW3")}, {"score": 76, "grade": "B"}, "B"),
+            (
+                {("lit-prose", "L5"), ("lit-prose", "L7"), ("lit-prose", "TW3")},
+                {"score": 70, "grade": "B"},
+                "B",
+            ),
+        )
+        for withheld, expected_dimension, expected_band in cases:
+            with self.subTest(withheld=sorted(withheld)), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                run_dir, manifest = prepare(root, "standard")
+                seats = write_outputs(root, manifest, na=withheld)
+                receipt = verify(root, seats)
+                execution = write_execution(root, manifest, seats)
+                result = json.loads(
+                    derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+                )
+
+                self.assertEqual(result["revisions"], [])
+                self.assertEqual(result["scores"]["dimensions"]["prose"], expected_dimension)
+                self.assertEqual(result["bands"]["literary"], expected_band)
+
+    def test_medium_veto_problem_caps_its_dimension_at_65(self) -> None:
+        """Break caught: only the high-severity veto cap is enforced."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(
+                root, manifest, problem=("lit-structure", "N2"), problem_severity="medium"
+            )
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                result["scores"]["dimensions"]["structure"], {"score": 65, "grade": "C+"}
+            )
+            self.assertEqual(result["scores"]["total"], 70)
+            self.assertEqual(result["bands"]["literary"], "B")
+            self.assertIn(
+                ("lit-structure", "N2"),
+                {(item["seat"], item["criterion_id"]) for item in result["arbitration"]},
+            )
+
+    def test_anchor_comparison_is_validated_and_flags_divergence_for_arbitration(self) -> None:
+        """An anchor placement two ranks away from the derived band needs a human."""
+        base = {
+            "schema_version": "1.0",
+            "run_id": "run-contract",
+            "seat": "lit-structure",
+            "phase": "review",
+            "criteria": [],
+            "free_view": "观点",
+            "anchor_comparison": {
+                "placement": "低于C",
+                "rationale": "关键转折只以概述交代，低于 C 档锚文的场景密度。",
+                "quote": {"text": "那年冬天", "target": "text", "location": "第1段"},
+            },
+        }
+        self.assertEqual(
+            validate_seat_output(json.loads(json.dumps(base)))["anchor_comparison"]["placement"],
+            "低于C",
+        )
+        rejected = json.loads(json.dumps(base))
+        rejected["anchor_comparison"]["placement"] = "接近A+"
+        with self.assertRaises(ContractError):
+            validate_seat_output(rejected)
+        non_core = json.loads(json.dumps(base))
+        non_core["seat"] = "lit-slop"
+        with self.assertRaises(ContractError):
+            validate_seat_output(non_core)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "custom(04,05,06,07)")
+            seats = write_outputs(
+                root,
+                manifest,
+                anchor={"lit-structure": base["anchor_comparison"]},
+            )
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(result["bands"]["literary"], "A")
+            flagged = [
+                item for item in result["arbitration"] if item["criterion_id"] == "ANCHOR"
+            ]
+            self.assertEqual(len(flagged), 1)
+            self.assertEqual(flagged[0]["seat"], "lit-structure")
+            self.assertEqual(
+                flagged[0]["reason"],
+                "席位 lit-structure 锚定对比背离：对照带位 低于C 与机导文学带 A 偏差 ≥2 档",
+            )
+            self.assertIn("锚定对比背离", (root / "report.md").read_text(encoding="utf-8"))
+
+    def test_anchor_comparison_within_one_rank_is_not_arbitrated(self) -> None:
+        """Break caught: every anchor placement is escalated regardless of distance."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "custom(04,05,06,07)")
+            seats = write_outputs(
+                root,
+                manifest,
+                anchor={
+                    "lit-structure": {
+                        "placement": "介于A-B",
+                        "rationale": "转折已场景化，但铺垫密度弱于 A 档锚文。",
+                        "quote": {"text": "那年冬天", "target": "text", "location": "第1段"},
+                    }
+                },
+            )
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(result["bands"]["literary"], "A")
+            self.assertEqual(result["arbitration"], [])
 
     def test_degraded_execution_is_diagnostic_with_null_bands(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -836,7 +1058,7 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["recommendation"], "仅诊断")
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "provisional")
-            self.assertEqual(result["scores"]["total"], 90)
+            self.assertEqual(result["scores"]["total"], 70)
             self.assertTrue(
                 any("评分判据未决" in reason for reason in result["scores"]["status_reasons"])
             )

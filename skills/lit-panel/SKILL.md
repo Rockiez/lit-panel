@@ -62,6 +62,7 @@ python3 scripts/prepare_run.py <clean-text> --preset standard \
 - 席 01 额外收到 source。
 - 席 03 额外收到 `references/slop-patterns-zh.md`；A7 是否进入 `active_criteria_ids` 只由阶段零的多文件 source 条件决定。
 - 席 10 额外收到 brief、预处理摘要和硬约束回执。
+- 席 04/05/06/07 额外收到 `references/anchors/band-a.md`、`band-b.md`、`band-c.md` 三份锚文（`anchor_paths`），用于第 5 节的锚定对比通道。锚文是纯合成校准材料，不是被评文本，也不携带本轮任何期望带位。
 - 任一包不得包含其他席位的结论、输出路径内容、期望带位或历史报告。
 
 ### 3.2 三端原生执行路径
@@ -155,6 +156,17 @@ python3 scripts/validate_execution_receipt.py <execution-receipt.json>
 - 席 01 每项判据都必须提供结构化 `fidelity_state`，值只能是 `SUPPORTED/PERMISSIBLE_INFERENCE/UNSUPPORTED/CONTRADICTED/UNVERIFIABLE`；不再从 note 前缀推断状态。每条 YES/NO 必须同时给至少一条 `target=text` 与一条 `target=source` 的逐字 quote。
 - 席 02 的确证矛盾把两处正文引文作为两个 quote。
 - 席 08 第二步使用 `phase=naive-reader-step-2`，提供 `reader.experience`、至少三项 `required_answers` 与 `willing_to_share`。
+- 可选 `anchor_comparison` 是锚定对比通道，**只有席 04/05/06/07 可以输出**，其他席位出现该字段即契约错误。它记录本席在读完三份锚文后对被评文本的离散带位对照，不参与评分，也不改变机械带位：
+
+```json
+"anchor_comparison": {
+  "placement": "介于A-B",
+  "rationale": "锚文 A 用接头钩这一具体动作承载告别，本文同一处只给出概述性交代，具体度介于 A 与 B 之间。",
+  "quote": {"text": "逐字正文引文", "target": "text", "location": "第5段"}
+}
+```
+
+  `placement` 只能取 `接近A/介于A-B/接近B/介于B-C/低于C` 五个离散标签之一——它是标签不是数值，因此不违反评审席禁数值纪律；`rationale` 必须非空并说明与哪一份锚文的哪种写法对照；`quote` 引用**被评文本**，`target` 固定为 `text`。合成阶段只用它做背离检查（见第 7 节第 6 条），旧回执不含该字段时视为未做对比，不构成缺口。
 
 收集后立即运行：
 
@@ -217,31 +229,31 @@ python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
 
 1. 问题判定=`[通过]` 的 NO，或 `[风险]` 的 YES。
 2. 忠实带：无席 01 为 N/A；高严重度 `CONTRADICTED/UNSUPPORTED` 为 C；其他问题为 B；干净为 A。
-3. 文学带：未完整覆盖 04/05/06/07 为 N/A；任一高严重度 veto 问题为 C；任一其他 veto/core 问题为 B；否则为 A。ABSTAIN 或 veto 的 NA 会形成覆盖缺口，不得自动得到 A；有明确适用性理由的 core/extended NA 不构成问题，也不阻断带位。
+3. 文学带：未完整覆盖 04/05/06/07 为 N/A；任一高严重度 veto 问题为 C；任一其他 veto/core 问题为 B；无 veto/core 问题时进入 A 带晋升门。ABSTAIN 或 veto 的 NA 会形成覆盖缺口，不得自动得到 A；有明确适用性理由的 core/extended NA 不构成问题，也不阻断带位。A 带晋升门：干净（未检出 veto/core 问题）只是必要条件，还须四个核心席的 craft set 已核验 YES 比例**都 ≥ 0.6** 才形成 `A`／`A候选`；任一核心席未达门槛时文学带为 `B`，报告必须注明这是**记录型：未检出缺陷，但正向工艺证据未达 A 门**（与 `derive_report.py` 输出的带位注记字符串一致），而不是检出了问题。craft set 为 04={N3,TW2,TW4,SC1}、05={P2,P3,P4,P7}、06={L5,L7,TW3}、07={E3,E6,E7,TW14}；只有引文核验通过的有效判定计入 YES，ABSTAIN/NA 永不计入。
 4. 文学带原为 A 且任一素读者答“不愿意”时，输出 `A候选（待人工确认）`。
 5. 红线=席 01 的高严重度 `CONTRADICTED/UNSUPPORTED`，以及席 02 的高严重度问题。
-6. 人工仲裁包含 ABSTAIN、veto NA、veto 中/低严重度问题、席 11 问题、素读者报警与引文作废项。
+6. 人工仲裁包含 ABSTAIN、veto NA、veto 中/低严重度问题、席 11 问题、素读者报警、引文作废项，以及锚定对比背离（某核心席的 `anchor_comparison.placement` 与机导文学带的档位差 ≥ 2 档）。锚定对比只进仲裁区，不改带位也不进评分。
 7. 决策建议：忠实/文学均 N/A 为“仅诊断”；任一 C 为“重写建议”；文学 A 且忠实 A/N/A 为“交付”；素读者报警为“待人工确认”；其余为“修订后交付”。
 8. 修订包收集全部问题判定，按 high→medium→low 排序。合成层只编辑已有 `note/free_view`，不得新增审美论断。
 9. 在不改变 A/B/C/N/A 质性带位的同时，按下节冻结公式导出 0-100 `scores` 视图；评审席与 orchestrator 不得直接给分、自由改分、设置百分比或临时权重。引文作废仍不能进入正式带位、红线或修订结论，但不得因此抹掉评分：评分继续使用被冻结的结构化判定向量，并把状态标为 `provisional`、逐项列出引文失败原因。
 
 `derived-report.json` 必须符合 `schema/derived-report.schema.json`；`report.md` 是可读投影。保存 `run.json`、`execution-receipt.json`、席位 JSON、核验回执、派生 JSON 和 Markdown 报告，形成可复现证据链。
 
-### 7.1 评分导出（恢复 v0.4.1 合同）
+### 7.1 评分导出（冻结公式 0.5.0-anchored）
 
-评分是判据向量的确定性视图，不是新的评审意见。闭合变体标识为 `formula_version=0.4.1-closed+always`；报告 schema 1.2 使用 `scores.status` 与 `status_reasons` 披露证据状态。**只要阶段三成功生成报告，就必须输出 0-100 数值总分，不得因 ABSTAIN、NA、引文作废、降级执行、缺少 source、preset 未覆盖全部评分席或局部席位失败而清空分数。** 完整且已核验的评分输入使用 `status=verified`；有明确适用性理由的 core/extended NA 视为完整判定，不扣分、不降低评分状态。ABSTAIN、veto NA 或其他覆盖/执行/引文问题使用 `status=provisional`，并逐项列明原因。缺少某一维度时该维度为 `null` 且不冒充已评测：有文学维度时总分按已有文学维度均值继续套用冻结扣分/加分；无文学维度时依次回退到读者体验、AI 洁净度、忠实度；完全没有可用评分维度时使用固定诊断基线 50。正式带位仍由完整证据门禁独立控制。
+评分是判据向量的确定性视图，不是新的评审意见。闭合变体标识为 `formula_version=0.5.0-anchored`；报告 schema 1.2 使用 `scores.status` 与 `status_reasons` 披露证据状态。**只要阶段三成功生成报告，就必须输出 0-100 数值总分，不得因 ABSTAIN、NA、引文作废、降级执行、缺少 source、preset 未覆盖全部评分席或局部席位失败而清空分数。** 完整且已核验的评分输入使用 `status=verified`；有明确适用性理由的 core/extended NA 视为完整判定，不扣分、不降低评分状态。ABSTAIN、veto NA 或其他覆盖/执行/引文问题使用 `status=provisional`，并逐项列明原因。缺少某一维度时该维度为 `null` 且不冒充已评测：有文学维度时总分按第 7.1 节的冻结公式只取已有文学维度继续计算（均值与短板封顶均只取已有维度）；无文学维度时依次回退到读者体验、AI 洁净度、忠实度；完全没有可用评分维度时使用固定诊断基线 50。正式带位仍由完整证据门禁独立控制。
 
 忠实度是唯一来源条件维度：未提供 source 时 `dimensions.fidelity=null`，其余维度和总分照常形成；提供 source 后，即使忠实席引文作废，也必须根据被冻结的 `fidelity_state/verdict/severity` 形成暂定忠实度分并标注 `provisional`。来源存在但忠实判定为 UNVERIFIABLE/未决时，仅忠实度保持 `null`，其他完整评分仍可输出暂定状态。
 
-1. 结构、人物、语言、情感分别对应 04/05/06/07，已覆盖维度基准 90。普通 core 问题每项扣 12，extended 问题每项扣 5；任一 high veto 问题把该维度封顶 45，任一 medium/low veto 问题封顶 65。ABSTAIN/NA 不扣分；只有 ABSTAIN 与 veto NA 作为未决状态进入 `status_reasons`，有明确适用性理由的 core/extended NA 为中性完成态。扣分与封顶使用冻结的结构化问题判定，引文作废时只降低证据状态，不静默改写判定。
+1. 结构、人物、语言、情感分别对应 04/05/06/07，已覆盖维度基准 70——这是"平实、无错、但没有正向工艺证据"的记录级锚点。在基准之上按本席 craft set 的已核验 YES 比例加分：比例 1.0 加 20，≥0.6 加 12，≥0.3 加 6，其余加 0；craft set 为 04={N3,TW2,TW4,SC1}、05={P2,P3,P4,P7}、06={L5,L7,TW3}、07={E3,E6,E7,TW14}，只有引文核验通过的有效判定计入分子，ABSTAIN/NA 永不计入 YES。普通 core 问题每项扣 12，extended 问题每项扣 5；任一 high veto 问题把该维度封顶 45，任一 medium/low veto 问题封顶 65。ABSTAIN/NA 不扣分；只有 ABSTAIN 与 veto NA 作为未决状态进入 `status_reasons`，有明确适用性理由的 core/extended NA 为中性完成态。扣分与封顶使用冻结的结构化问题判定，引文作废时只降低证据状态，不静默改写判定。
 2. AI 洁净度基准 100；席 03 每个有效问题扣 3，累计扣分最多 10。
 3. 读者体验基准 85；席 08 每个有效 R 系问题扣 10。多读者时先分别按同一公式计算，再取算术平均值。
 4. 原创性只加不减：O2/O3/O5/O6 全部通过且无任何 O 系问题时加 5；其中至少三项通过且无任何 O 系问题时加 3；其他情况加 0。
 5. 忠实度沿用忠实带映射：A=90、B=65、C=45；无 source 时为 `null`。
-6. 全覆盖总分=`四个文学维度算术平均值 - AI 洁净度扣分 + 原创性加分`；部分覆盖时只平均已有文学维度。无文学维度时依次回退到读者体验、AI 洁净度、忠实度；均无时从固定诊断基线 50 起算。总分上限 100、下限 0，最后应用忠实度封顶：忠实 B 最高 75，忠实 C 最高 45。
+6. 全覆盖总分=`min(四个文学维度算术平均值 − AI 洁净度扣分, 最短板文学维度分) + 原创性加分`；部分覆盖时均值与短板都只取已有文学维度。短板封顶是木桶约束：单一维度塌陷不能被其他维度的高分平均掉；原创性加分在取 min 之后再加，因此不会被短板吞掉。无文学维度时依次回退到读者体验、AI 洁净度、忠实度，此时不适用短板封顶；均无时从固定诊断基线 50 起算。总分上限 100、下限 0，最后应用忠实度封顶：忠实 B 最高 75，忠实 C 最高 45。
 7. 分档：A=90–100、A-=85–89、B+=80–84、B=70–79、C+=60–69、C=45–59、D=0–44。中间计算保留实际算术结果，最终维度与总分按脚本的统一归一化规则输出。
 
-干净文学维度固定以 90 为基线；v0.4.1 历史文档中的 95–100 “历史锚点上浮”没有闭合运行输入，0.5.2 不允许 orchestrator 主观决定是否上浮。报告必须原样保留：**分数由判据向量机械导出，评审席不产生任何数字。**
+干净文学维度以 70 为基线，只有已核验的 craft 正向证据才能把它抬到 90；"没有检出问题"本身不再等于优秀。v0.4.1 历史文档中的 95–100 “历史锚点上浮”没有闭合运行输入，0.5.2 不允许 orchestrator 主观决定是否上浮。报告必须原样保留：**分数由判据向量机械导出，评审席不产生任何数字。**
 
 ## 8. 报告与纪律
 
@@ -265,3 +277,5 @@ python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
 对比模式不复用带位矩阵。先确认 A/B 同源同任务；每席在独立新上下文中做 A→B 与 B→A 两次换序偏好，顺序反转导致偏好反转则记 TIE。只报告偏好分布与理由，不宣布数值胜率或加权冠军。`--fast-compare` 可省略换序，但必须披露位置偏差未受机械防护，不用于发布门禁。
 
 `--stability` 以相同配置完整独立跑两轮，两轮互不可见。按席报告“共同有效判据中 verdict 翻转的条目”，不把它换算成全团总分，也不让稳定性结果自动改变带位。
+
+对比模式每次运行后，在用户表态选定偏好的那一篇之后，应把该偏好对追加记录到本地 `evals/preference_pairs.jsonl`，每行字段为 `text_a`、`text_b`、`per_dim_panel_verdicts`、`user_pick`、`date`。该文件是 gitignored 的本地文件，不入库、不随包分发，也不参与本轮任何带位或评分；它只用于周期性产出判官-用户一致率报告，定位哪些席与用户的真实编辑取舍系统性背离。用户未表态时不得代填 `user_pick`。

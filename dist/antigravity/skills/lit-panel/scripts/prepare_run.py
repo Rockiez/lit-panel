@@ -20,6 +20,8 @@ NAIVE_STEP_1_PROMPT = (
     "请以普通读者身份首读正文，只输出自然体验原文；不要读取判据、其他席位输出，"
     "也不要使用评审术语。执行器必须保存该 UTF-8 原文的 SHA-256。"
 )
+ANCHOR_SEATS = {"04", "05", "06", "07"}
+ANCHOR_FILES = ("band-a.md", "band-b.md", "band-c.md")
 STEP_1_RECEIPT_CONTRACT = {
     "format": "utf-8-text",
     "required": True,
@@ -251,6 +253,10 @@ def build_packet_payloads(
             packet["slop_patterns_path"] = str(
                 skill_root / "references" / "slop-patterns-zh.md"
             )
+        if number in ANCHOR_SEATS:
+            packet["anchor_paths"] = [
+                str(skill_root / "references" / "anchors" / name) for name in ANCHOR_FILES
+            ]
         result[expected["packet"]] = packet
     return result
 

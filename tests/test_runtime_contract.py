@@ -838,7 +838,7 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["scores"]["total"], 71.3)
             markdown = (root / "report.md").read_text(encoding="utf-8")
             self.assertIn(
-                "- 文学带：B（记录型：未检出缺陷，但正向工艺证据未达 A 门）", markdown
+                "- 文学带：B（记录型：正向工艺证据未达 A 门）", markdown
             )
 
     def test_total_follows_the_weakest_literary_dimension_not_the_mean(self) -> None:

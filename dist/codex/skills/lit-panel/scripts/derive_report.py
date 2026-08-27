@@ -560,9 +560,9 @@ def write_markdown(
     host = report["execution"]["host"]
     literary_line = report["bands"]["literary"] or "未形成"
     if craft_gate_demoted:
-        # 0.6.0 起记录型只由 craft_overall < 0.3 触发，缺陷天花板可以同时是 B，
-        # 因此「未检出缺陷」在缺陷天花板为 B 时并不成立——文案待人工重定。
-        literary_line = "B（记录型：未检出缺陷，但正向工艺证据未达 A 门）"
+        # 记录型只由 craft_overall < 0.3 触发，与缺陷天花板相互独立：
+        # 同一轮可以既是记录型又检出缺陷，因此注记只陈述工艺证据不足这一件事。
+        literary_line = "B（记录型：正向工艺证据未达 A 门）"
     lines = [
         "# lit-panel 评审报告",
         "",

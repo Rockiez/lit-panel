@@ -233,7 +233,7 @@ python3 scripts/derive_report.py <original-or-repaired-seat-output-dir> \
    - **缺陷天花板**（沿用既有红线，未改变）：任一高严重度 veto 问题封顶 `C`；任一其他 veto/core 问题封顶 `B`；无 veto/core 问题时封顶 `A`。ABSTAIN 或 veto 的 NA 会形成覆盖缺口，不得自动得到 `A`；有明确适用性理由的 core/extended NA 不构成问题，也不阻断带位。
    - **craft 天花板**（独立于缺陷天花板的正向证据门）：craft set 为 04={N3,TW2,TW4,SC1}、05={P2,P3,P4,P7}、06={L5,L7,TW3}、07={E3,E6,E7,TW14}；`craft_ratio_i` 是该核心席 craft set 中已核验 YES 数占集合大小的比例，只有引文核验通过的有效判定计入 YES，ABSTAIN/NA 永不计入。四个核心席的 `craft_ratio_i` **都 ≥ 0.6** 时封顶 `A`；否则四席 `craft_ratio_i` 的算术平均（`craft_overall`）**≥ 0.3** 时封顶 `B`；否则封顶「记录型」。
 
-   文学带 = min(缺陷天花板, craft 天花板)。**「记录型」不是新的带位字符串，而是 `B` 的子级**——带位词表仍是 `{N/A, C, B, A, A候选（待人工确认）}`，`derive_report.py` 的 schema band 枚举不因此改动；「记录型」只影响第 7.1 节的分数窗口与报告注记，复用既有 `craft_gate_demoted` 标志（语义由「逐席 <0.6」改为 `craft_overall < 0.3`）。落入「记录型」时报告必须注明**记录型：未检出缺陷，但正向工艺证据未达 A 门**，而不是检出了问题——一篇干净但 craft 证据不足的文本，会因 craft 天花板封顶而落在「记录型」，即使缺陷天花板同时给出 `A`。
+   文学带 = min(缺陷天花板, craft 天花板)。**「记录型」不是新的带位字符串，而是 `B` 的子级**——带位词表仍是 `{N/A, C, B, A, A候选（待人工确认）}`，`derive_report.py` 的 schema band 枚举不因此改动；「记录型」只影响第 7.1 节的分数窗口与报告注记，复用既有 `craft_gate_demoted` 标志（语义由「逐席 <0.6」改为 `craft_overall < 0.3`）。落入「记录型」时报告必须注明**记录型：正向工艺证据未达 A 门**。记录型只由 craft 天花板触发，与缺陷天花板相互独立：一篇干净但 craft 证据不足的文本会落入记录型（缺陷天花板同时为 `A`），一篇既缺工艺证据又检出 veto/core 问题的文本同样落入记录型，因此该注记只陈述工艺证据不足这一件事，不对是否检出缺陷作任何断言。
 4. 文学带原为 A 且任一素读者答“不愿意”时，输出 `A候选（待人工确认）`。
 5. 红线=席 01 的高严重度 `CONTRADICTED/UNSUPPORTED`，以及席 02 的高严重度问题。
 6. 人工仲裁包含 ABSTAIN、veto NA、veto 中/低严重度问题、席 11 问题、素读者报警、引文作废项，以及锚定对比背离（某核心席的 `anchor_comparison.placement` 与机导文学带的档位差 ≥ 2 档）。锚定对比只进仲裁区，不改带位也不进评分。

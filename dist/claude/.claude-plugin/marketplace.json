@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "lit-panel 自托管插件市场——从仓库内已提交的 Claude 专用分发包安装，不要求用户本地构建",
-    "version": "0.6.0"
+    "version": "0.6.1"
   },
   "plugins": [
     {

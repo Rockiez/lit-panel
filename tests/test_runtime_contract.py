@@ -17,6 +17,7 @@ SOURCE = ROOT / "tests" / "synthetic" / "source.md"
 BRIEF = ROOT / "tests" / "synthetic" / "brief.md"
 
 sys.path.insert(0, str(SCRIPTS))
+import derive_report  # noqa: E402
 from lit_panel_common import ContractError, parse_criteria, validate_seat_output  # noqa: E402
 
 METADATA = parse_criteria(SKILL / "references" / "criteria")
@@ -31,6 +32,7 @@ ALL_CRAFT_IDS = {
     for seat, criterion_ids in CRAFT_SETS.items()
     for criterion_id in criterion_ids
 }
+CORE_SEATS = set(CRAFT_SETS)
 
 
 def selection(value: tuple[str, str] | set[tuple[str, str]] | None) -> set[tuple[str, str]]:
@@ -40,6 +42,30 @@ def selection(value: tuple[str, str] | set[tuple[str, str]] | None) -> set[tuple
     if isinstance(value, tuple) and len(value) == 2 and isinstance(value[0], str):
         return {value}
     return set(value)
+
+
+def core_judgments(
+    overrides: dict[tuple[str, str], tuple[str, str]] | None = None,
+) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]]:
+    """Judgment rows for the four core seats, clean everywhere except the overrides.
+
+    An override maps (seat, criterion_id) to (verdict, severity), letting a test state a
+    band-lattice combination directly instead of steering it through a whole run.
+    """
+    overrides = overrides or {}
+    outputs = {seat: {"seat": seat, "reader_id": None} for seat in CORE_SEATS}
+    rows = []
+    for (seat, criterion_id), metadata in sorted(METADATA.items()):
+        if seat not in CORE_SEATS:
+            continue
+        clean = "YES" if metadata["polarity"] == "[通过]" else "NO"
+        verdict, severity = overrides.get((seat, criterion_id), (clean, "none"))
+        rows.append((
+            outputs[seat],
+            {"id": criterion_id, "verdict": verdict, "severity": severity},
+            metadata,
+        ))
+    return rows
 
 
 def run(*args: str, expected: int = 0) -> subprocess.CompletedProcess[str]:
@@ -401,7 +427,12 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["recommendation"], "交付")
 
     def test_complete_standard_chain_derives_restored_scorecard(self) -> None:
-        """Break caught: a formal standard run drops the v0.4.1 score view again."""
+        """Break caught: a formal standard run drops the v0.4.1 score view again.
+
+        Band A [85,94] with every craft row affirmed and no defects: p_i = 1 for all
+        four seats, so each dimension is 85+9*1 = 94 and the total saturates at 94
+        (the +0.05 originality lift is clamped away at the top of the window).
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -418,16 +449,16 @@ class RuntimeContractTests(unittest.TestCase):
                     "available": True,
                     "status": "verified",
                     "status_reasons": [],
-                    "formula_version": "0.5.0-anchored",
-                    "total": 95,
+                    "formula_version": "0.6.0-band-anchored",
+                    "total": 94,
                     "grade": "A",
                     "originality_bonus": 5,
                     "reader_warning": False,
                     "dimensions": {
-                        "structure": {"score": 90, "grade": "A"},
-                        "character": {"score": 90, "grade": "A"},
-                        "prose": {"score": 90, "grade": "A"},
-                        "resonance": {"score": 90, "grade": "A"},
+                        "structure": {"score": 94, "grade": "A"},
+                        "character": {"score": 94, "grade": "A"},
+                        "prose": {"score": 94, "grade": "A"},
+                        "resonance": {"score": 94, "grade": "A"},
                         "ai_cleanliness": {"score": 100, "grade": "A"},
                         "reader_experience": {"score": 85, "grade": "A-"},
                         "fidelity": None,
@@ -436,13 +467,18 @@ class RuntimeContractTests(unittest.TestCase):
             )
             markdown = (root / "report.md").read_text(encoding="utf-8")
             self.assertIn("## 总分卡", markdown)
-            self.assertIn("**95/100 · A**", markdown)
+            self.assertIn("**94/100 · A**", markdown)
             self.assertIn("分数由判据向量机械导出，评审席不产生任何数字。", markdown)
 
     def test_invalid_quotes_keep_provisional_scores_from_frozen_judgments(self) -> None:
-        """Break caught: a bad quote erases a score instead of degrading its evidence status."""
+        """Break caught: a bad quote erases a score instead of degrading its evidence status.
+
+        The frozen N1 problem still lands the run in band B [75,84]; structure keeps its
+        full craft ratio and carries one core defect out of 14 tier-weighted non-craft
+        units, so p = 0.5+0.5*(1-2/14) = 0.9286 → 75+9*0.9286 = 83.36.
+        """
         cases = (
-            ("lit-structure", "N1", "lit-structure:N1", "structure", {"score": 78, "grade": "B"}),
+            ("lit-structure", "N1", "lit-structure:N1", "structure", {"score": 83.36, "grade": "B+"}),
             ("lit-slop", "A1", "lit-slop:A1", "ai_cleanliness", {"score": 97, "grade": "A"}),
             (
                 "lit-naive-reader", "R2", "lit-naive-reader@reader-01:R2",
@@ -480,9 +516,10 @@ class RuntimeContractTests(unittest.TestCase):
     def test_non_applicable_core_p4_does_not_block_band_or_numeric_score(self) -> None:
         """Short prose without two speakers must not lose its band or score.
 
-        P4 is a craft criterion, so an NA legitimately costs its seat the full craft
-        bonus (character 70+12=82) and, through the bottleneck, drops the total to 87.
-        The band and the verified status are what must survive.
+        P4 is a craft criterion, so an NA only withholds positive evidence: character
+        craft is 3/4, keeping the seat above the 0.6 A-gate, so the band stays A [85,94].
+        Character sits at p=0.5*0.75+0.5=0.875 → 85+9*0.875 = 92.88, and the total at
+        p=0.7*0.9688+0.3*0.875+0.05 = 0.9906 → 93.92.
         """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -499,9 +536,9 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "verified")
             self.assertEqual(
-                result["scores"]["dimensions"]["character"], {"score": 82, "grade": "B+"}
+                result["scores"]["dimensions"]["character"], {"score": 92.88, "grade": "A"}
             )
-            self.assertEqual(result["scores"]["total"], 87)
+            self.assertEqual(result["scores"]["total"], 93.92)
             self.assertEqual(result["scores"]["status_reasons"], [])
             self.assertEqual(result["arbitration"], [])
 
@@ -541,7 +578,12 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
     def test_invalid_originality_quote_still_removes_the_bonus_provisionally(self) -> None:
-        """Break caught: an unverified originality judgment is dropped from the score vector."""
+        """Break caught: an unverified originality judgment is dropped from the score vector.
+
+        The bonus must be gone from the reported field; the total stays 94 because the
+        core seats are already at the top of band A [85,94], where the +0.05 lift the
+        bonus would have added is clamped away anyway.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -560,7 +602,7 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "provisional")
             self.assertEqual(result["scores"]["originality_bonus"], 0)
-            self.assertEqual(result["scores"]["total"], 90)
+            self.assertEqual(result["scores"]["total"], 94)
 
     def test_invalid_fidelity_quote_keeps_provisional_fidelity_score_when_source_exists(self) -> None:
         """Break caught: a fidelity quote error clears a score despite the source being present."""
@@ -650,8 +692,9 @@ class RuntimeContractTests(unittest.TestCase):
     def test_scorecard_deducts_an_ordinary_core_problem(self) -> None:
         """Break caught: ordinary core failures stop reducing their literary dimension.
 
-        N1 is deliberately a non-craft core row: structure keeps its full craft bonus
-        (70+20−12=78) and the bottleneck pulls the total to min(87, 78)+5 = 83.
+        N1 is deliberately a non-craft core row, so it lands in the defect ledger: it
+        drops the defect ceiling to B [75,84] and raises structure's defect density to
+        2/14, giving p=0.9286 → 83.36 while the other three seats stay at 84.
         """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -665,35 +708,71 @@ class RuntimeContractTests(unittest.TestCase):
 
             self.assertEqual(
                 result["scores"]["dimensions"]["structure"],
-                {"score": 78, "grade": "B"},
+                {"score": 83.36, "grade": "B+"},
             )
-            self.assertEqual(result["scores"]["total"], 83)
+            self.assertEqual(result["scores"]["total"], 84)
             self.assertEqual(result["bands"]["literary"], "B")
 
     def test_scorecard_applies_ai_penalty_without_double_counting(self) -> None:
-        """Break caught: one slop finding is omitted or charged more than once."""
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            run_dir, manifest = prepare(root, "standard")
-            seats = write_outputs(root, manifest, problem=("lit-slop", "A1"))
-            receipt = verify(root, seats)
-            execution = write_execution(root, manifest, seats)
-            result = json.loads(
-                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
-            )
+        """Break caught: one slop finding is omitted or charged more than once.
 
-            self.assertEqual(
-                result["scores"]["dimensions"]["ai_cleanliness"],
-                {"score": 97, "grade": "A"},
-            )
-            self.assertEqual(result["scores"]["total"], 92)
+        The ai_cleanliness dimension keeps its absolute scale (100−3 per finding). The
+        total charges 0.02 of the band position per finding, so against a run held just
+        below the top of band A (one prose craft row withheld, total 93.74) one finding
+        costs 9*0.02 = 0.18 and two cost exactly twice that.
+        """
+        for problem, expected_ai, expected_total in (
+            (("lit-slop", "A1"), {"score": 97, "grade": "A"}, 93.56),
+            (
+                {("lit-slop", "A1"), ("lit-slop", "A2")},
+                {"score": 94, "grade": "A"},
+                93.38,
+            ),
+        ):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                run_dir, manifest = prepare(root, "standard")
+                seats = write_outputs(
+                    root, manifest, na={("lit-prose", "TW3")}, problem=problem
+                )
+                receipt = verify(root, seats)
+                execution = write_execution(root, manifest, seats)
+                result = json.loads(
+                    derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+                )
+
+                self.assertEqual(result["bands"]["literary"], "A")
+                self.assertEqual(result["scores"]["dimensions"]["ai_cleanliness"], expected_ai)
+                self.assertEqual(result["scores"]["total"], expected_total)
 
     def test_scorecard_keeps_originality_bonus_positive_only(self) -> None:
-        """Break caught: an originality problem deducts points instead of only removing bonus."""
+        """Break caught: an originality problem deducts points instead of only removing bonus.
+
+        Measured against the same run without the problem (total 93.74), losing the bonus
+        must cost exactly the 0.05 position lift it bought — 9*0.05 = 0.45 — and nothing
+        more, so the total is 93.29 rather than anything lower.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
-            seats = write_outputs(root, manifest, problem=("lit-originality", "O1"))
+            seats = write_outputs(root, manifest, na={("lit-prose", "TW3")})
+            receipt = verify(root, seats)
+            execution = write_execution(root, manifest, seats)
+            baseline = json.loads(
+                derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+            )
+            self.assertEqual(baseline["scores"]["originality_bonus"], 5)
+            self.assertEqual(baseline["scores"]["total"], 93.74)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard")
+            seats = write_outputs(
+                root,
+                manifest,
+                na={("lit-prose", "TW3")},
+                problem=("lit-originality", "O1"),
+            )
             receipt = verify(root, seats)
             execution = write_execution(root, manifest, seats)
             result = json.loads(
@@ -701,7 +780,10 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             self.assertEqual(result["scores"]["originality_bonus"], 0)
-            self.assertEqual(result["scores"]["total"], 90)
+            self.assertEqual(result["scores"]["total"], 93.29)
+            self.assertAlmostEqual(
+                baseline["scores"]["total"] - result["scores"]["total"], 0.45, places=2
+            )
 
     def test_scorecard_applies_fidelity_cap_last(self) -> None:
         """Break caught: a fidelity C no longer caps a high literary score at 45."""
@@ -726,7 +808,12 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["recommendation"], "重写建议")
 
     def test_record_type_run_without_craft_evidence_is_demoted_to_b(self) -> None:
-        """A flawless run that never affirms positive craft cannot buy an A."""
+        """A flawless run that never affirms positive craft cannot buy an A.
+
+        craft_overall is 0, below the 0.3 overall gate, so the craft ceiling is 记录型
+        and the window is [68,74]. Every seat sits at p=0.5*0+0.5*1 = 0.5 → 71, and the
+        total adds the 0.05 originality lift: 68+6*0.55 = 71.3.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -744,18 +831,24 @@ class RuntimeContractTests(unittest.TestCase):
             for dimension in ("structure", "character", "prose", "resonance"):
                 self.assertEqual(
                     result["scores"]["dimensions"][dimension],
-                    {"score": 70, "grade": "B"},
+                    {"score": 71, "grade": "B"},
                     dimension,
                 )
             self.assertEqual(result["scores"]["status"], "verified")
-            self.assertEqual(result["scores"]["total"], 75)
+            self.assertEqual(result["scores"]["total"], 71.3)
             markdown = (root / "report.md").read_text(encoding="utf-8")
             self.assertIn(
                 "- 文学带：B（记录型：未检出缺陷，但正向工艺证据未达 A 门）", markdown
             )
 
     def test_total_follows_the_weakest_literary_dimension_not_the_mean(self) -> None:
-        """Break caught: three strong dimensions average away one collapsed dimension."""
+        """Break caught: three strong dimensions average away one collapsed dimension.
+
+        Three non-craft core defects put structure at defect density 6/14, so p=0.7857
+        → 75+9*0.7857 = 82.07 inside band B [75,84]. The 0.3 min term then has to pull
+        the total below what the weighted mean alone would give: 0.7*0.9464+0.3*0.7857
+        +0.05 = 0.9482 → 83.53, against 83.97 for a mean-only projection.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -772,21 +865,33 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             dimensions = result["scores"]["dimensions"]
-            self.assertEqual(dimensions["structure"], {"score": 54, "grade": "C"})
+            self.assertEqual(dimensions["structure"], {"score": 82.07, "grade": "B+"})
             for dimension in ("character", "prose", "resonance"):
-                self.assertEqual(dimensions[dimension], {"score": 90, "grade": "A"}, dimension)
+                self.assertEqual(dimensions[dimension], {"score": 84, "grade": "B+"}, dimension)
             self.assertEqual(result["scores"]["originality_bonus"], 5)
-            self.assertEqual(result["scores"]["total"], 59)
+            self.assertEqual(result["scores"]["total"], 83.53)
             self.assertEqual(result["bands"]["literary"], "B")
+            mean_only = sum(
+                dimensions[name]["score"]
+                for name in ("structure", "character", "prose", "resonance")
+            ) / 4 + 0.45
+            self.assertLess(result["scores"]["total"], mean_only)
 
-    def test_craft_bonus_steps_down_with_the_share_of_affirmed_craft(self) -> None:
-        """The +20/+12/+6 craft ladder and the 0.6 A-gate must move together."""
+    def test_dimension_steps_down_with_the_share_of_affirmed_craft(self) -> None:
+        """The craft share and the 0.6 A-gate must move together.
+
+        Prose has three craft rows. Withholding one leaves 2/3 = 0.667, still above the
+        per-seat gate, so the band stays A [85,94] and prose sits at 0.5*0.667+0.5 =
+        0.833 → 92.5. Withholding two drops prose to 1/3, failing the gate: the band
+        falls to B [75,84] and prose to 0.667 → 81. Withholding all three gives 0.5 →
+        79.5, still B because craft_overall (0.75) clears the 0.3 record-type line.
+        """
         cases = (
-            ({("lit-prose", "TW3")}, {"score": 82, "grade": "B+"}, "A"),
-            ({("lit-prose", "L7"), ("lit-prose", "TW3")}, {"score": 76, "grade": "B"}, "B"),
+            ({("lit-prose", "TW3")}, {"score": 92.5, "grade": "A"}, "A"),
+            ({("lit-prose", "L7"), ("lit-prose", "TW3")}, {"score": 81, "grade": "B+"}, "B"),
             (
                 {("lit-prose", "L5"), ("lit-prose", "L7"), ("lit-prose", "TW3")},
-                {"score": 70, "grade": "B"},
+                {"score": 79.5, "grade": "B"},
                 "B",
             ),
         )
@@ -805,8 +910,14 @@ class RuntimeContractTests(unittest.TestCase):
                 self.assertEqual(result["scores"]["dimensions"]["prose"], expected_dimension)
                 self.assertEqual(result["bands"]["literary"], expected_band)
 
-    def test_medium_veto_problem_caps_its_dimension_at_65(self) -> None:
-        """Break caught: only the high-severity veto cap is enforced."""
+    def test_medium_veto_problem_costs_more_than_an_ordinary_core_problem(self) -> None:
+        """Break caught: only the high-severity veto cap is enforced.
+
+        A medium-severity veto stops short of the C red line, so the band is B [75,84]
+        like any core defect — but the veto tier weighs 3 against core's 2, so structure
+        lands at 0.5+0.5*(1-3/14) = 0.8929 → 83.04, strictly below the 83.36 the same
+        seat scores for a core defect. It still has to reach human arbitration.
+        """
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir, manifest = prepare(root, "standard")
@@ -820,14 +931,149 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                result["scores"]["dimensions"]["structure"], {"score": 65, "grade": "C+"}
+                result["scores"]["dimensions"]["structure"], {"score": 83.04, "grade": "B+"}
             )
-            self.assertEqual(result["scores"]["total"], 70)
+            self.assertEqual(result["scores"]["total"], 83.99)
             self.assertEqual(result["bands"]["literary"], "B")
+            self.assertLess(result["scores"]["dimensions"]["structure"]["score"], 83.36)
             self.assertIn(
                 ("lit-structure", "N2"),
                 {(item["seat"], item["criterion_id"]) for item in result["arbitration"]},
             )
+
+    def test_band_is_the_stricter_of_the_craft_and_defect_ceilings(self) -> None:
+        """The lattice must take min(craft ceiling, defect ceiling), order A > B > 记录型 > C."""
+        cases = (
+            ("clean", {}, "A", "A", ("A", False)),
+            (
+                "craft A, defect B",
+                {("lit-structure", "N1"): ("NO", "high")},
+                "A", "B", ("B", False),
+            ),
+            (
+                "craft 记录型, defect A",
+                {pair: ("NA", "none") for pair in ALL_CRAFT_IDS},
+                "记录型", "A", ("B", True),
+            ),
+            (
+                "craft 记录型, defect C",
+                {
+                    **{pair: ("NA", "none") for pair in ALL_CRAFT_IDS},
+                    ("lit-structure", "N2"): ("NO", "high"),
+                },
+                "记录型", "C", ("C", False),
+            ),
+            (
+                "craft B, defect A",
+                {(seat, cid): ("NA", "none")
+                 for seat, cid in ALL_CRAFT_IDS if seat == "lit-prose"},
+                "B", "A", ("B", False),
+            ),
+        )
+        for label, overrides, craft, defect, expected in cases:
+            with self.subTest(case=label):
+                rows = core_judgments(overrides)
+                self.assertEqual(derive_report.craft_ceiling(rows), craft)
+                self.assertEqual(derive_report.defect_ceiling(rows), defect)
+                self.assertEqual(
+                    derive_report.literary_band_detail(rows, CORE_SEATS, False), expected
+                )
+
+    def test_record_type_window_opens_only_below_the_overall_craft_gate(self) -> None:
+        """记录型 is B's sub-level at [68,74], reached only when craft_overall < 0.3."""
+        self.assertEqual(derive_report.band_window("B", True), (68, 74))
+        self.assertEqual(derive_report.band_window("B", False), (75, 84))
+        self.assertIsNone(derive_report.band_window("N/A", False))
+
+        # One core seat's craft withheld leaves craft_overall at 0.75 — plain B.
+        partial = core_judgments(
+            {(seat, cid): ("NA", "none") for seat, cid in ALL_CRAFT_IDS if seat == "lit-prose"}
+        )
+        self.assertAlmostEqual(derive_report.craft_overall(partial), 0.75)
+        self.assertFalse(derive_report.literary_band_detail(partial, CORE_SEATS, False)[1])
+
+        # All craft withheld puts craft_overall at 0, under the 0.3 gate.
+        none_affirmed = core_judgments({pair: ("NA", "none") for pair in ALL_CRAFT_IDS})
+        self.assertEqual(derive_report.craft_overall(none_affirmed), 0.0)
+        band, demoted = derive_report.literary_band_detail(none_affirmed, CORE_SEATS, False)
+        self.assertEqual((band, demoted), ("B", True))
+        self.assertEqual(derive_report.band_window(band, demoted), (68, 74))
+
+    def test_craft_criteria_never_enter_the_defect_ledger(self) -> None:
+        """A craft NO must cost only its positive evidence, never a second tier deduction.
+
+        N3 and N1 are both non-veto core rows on lit-structure; only N1 is in the craft
+        set. Failing N3 leaves defect density at 0 and shows up solely as a craft ratio
+        of 3/4, while failing N1 charges 2 of the seat's 14 tier-weighted non-craft units.
+        """
+        craft_no = core_judgments({("lit-structure", "N3"): ("NO", "high")})
+        plain_no = core_judgments({("lit-structure", "N1"): ("NO", "high")})
+
+        self.assertEqual(derive_report.defect_density("lit-structure", craft_no), 0.0)
+        self.assertAlmostEqual(
+            derive_report.defect_density("lit-structure", plain_no), 2 / 14
+        )
+        self.assertEqual(derive_report.craft_ratio("lit-structure", craft_no), 0.75)
+        self.assertEqual(derive_report.craft_ratio("lit-structure", plain_no), 1.0)
+        self.assertNotEqual(
+            derive_report.position("lit-structure", craft_no),
+            derive_report.position("lit-structure", plain_no),
+        )
+
+        # A craft NO and a craft NA are indistinguishable to the score: both are simply
+        # absent positive evidence, which is the whole point of the 0.6.0 correction.
+        craft_na = core_judgments({("lit-structure", "N3"): ("NA", "none")})
+        self.assertEqual(
+            derive_report.position("lit-structure", craft_no),
+            derive_report.position("lit-structure", craft_na),
+        )
+
+    def test_total_stays_inside_its_band_window_unless_fidelity_caps_it(self) -> None:
+        """The score is a projection of the band, so only the fidelity cap may escape it."""
+        cases = (
+            ("A", {}, "A"),
+            ("B", {"problem": ("lit-structure", "N1")}, "B"),
+            ("C", {"problem": ("lit-structure", "N2")}, "C"),
+            ("记录型", {"na": ALL_CRAFT_IDS}, "B"),
+        )
+        for label, kwargs, expected_band in cases:
+            with self.subTest(band=label), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                run_dir, manifest = prepare(root, "standard")
+                seats = write_outputs(root, manifest, **kwargs)
+                receipt = verify(root, seats)
+                execution = write_execution(root, manifest, seats)
+                result = json.loads(
+                    derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
+                )
+
+                self.assertEqual(result["bands"]["literary"], expected_band)
+                low, high = derive_report.BAND_WINDOWS[label]
+                self.assertGreaterEqual(result["scores"]["total"], low)
+                self.assertLessEqual(result["scores"]["total"], high)
+                for dimension in ("structure", "character", "prose", "resonance"):
+                    score = result["scores"]["dimensions"][dimension]["score"]
+                    self.assertGreaterEqual(score, low, dimension)
+                    self.assertLessEqual(score, high, dimension)
+
+        # The pre-existing fidelity cap is applied last and may legitimately push the
+        # total below the band window — band A here, but capped to 45 by a fidelity C.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_dir, manifest = prepare(root, "standard", source=SOURCE)
+            seats = write_outputs(root, manifest, problem=("lit-fidelity", "F1"))
+            receipt = verify(root, seats, source=SOURCE)
+            execution = write_execution(root, manifest, seats)
+            result = json.loads(
+                derive(
+                    root, seats, receipt, run_dir, execution, source=SOURCE
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(result["bands"]["literary"], "A")
+            self.assertEqual(result["bands"]["fidelity"], "C")
+            self.assertEqual(result["scores"]["total"], 45)
+            self.assertLess(result["scores"]["total"], derive_report.BAND_WINDOWS["A"][0])
 
     def test_anchor_comparison_is_validated_and_flags_divergence_for_arbitration(self) -> None:
         """An anchor placement two ranks away from the derived band needs a human."""
@@ -926,7 +1172,9 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["recommendation"], "仅诊断")
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "provisional")
-            self.assertEqual(result["scores"]["total"], 90)
+            # No formal band, but the frozen judgments still project into A [85,94] at
+            # p=1 for the provisional score view.
+            self.assertEqual(result["scores"]["total"], 94)
             self.assertTrue(
                 any("原生 subagent 隔离" in reason for reason in result["scores"]["status_reasons"])
             )
@@ -1058,7 +1306,9 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["recommendation"], "仅诊断")
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "provisional")
-            self.assertEqual(result["scores"]["total"], 70)
+            # Abstaining everywhere affirms no craft and decides no defect: the score
+            # view falls to the 记录型 window [68,74] at p=0.5 → 71.
+            self.assertEqual(result["scores"]["total"], 71)
             self.assertTrue(
                 any("评分判据未决" in reason for reason in result["scores"]["status_reasons"])
             )

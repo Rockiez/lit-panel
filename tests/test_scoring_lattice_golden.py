@@ -30,27 +30,34 @@ SCRIPTS = ROOT / "core" / "lit-panel" / "scripts"
 CRITERIA = ROOT / "core" / "lit-panel" / "references" / "criteria"
 sys.path.insert(0, str(SCRIPTS))
 
+import band_lattice  # noqa: E402
 import derive_report  # noqa: E402
 from lit_panel_common import parse_criteria  # noqa: E402
 
 BASELINE = Path(__file__).resolve().parent / "golden" / "scoring_lattice_baseline.json"
 
+_LATTICE = band_lattice.BandLattice(band_lattice.Rubric.from_criteria_dir(CRITERIA))
+
 # 重构时只改这张表；基线 JSON 的键不变。
+# 评分格已迁入 band_lattice（阶段 0）；fidelity_band 与 originality_bonus 留在
+# derive_report——它们不依赖 rubric，属报告层而非带位格。
 LATTICE: dict[str, Callable[..., Any]] = {
-    "craft_ratio": derive_report.craft_ratio,
-    "craft_overall": derive_report.craft_overall,
-    "defect_density": derive_report.defect_density,
-    "position": derive_report.position,
-    "craft_ceiling": derive_report.craft_ceiling,
-    "defect_ceiling": derive_report.defect_ceiling,
-    "literary_band_detail": derive_report.literary_band_detail,
-    "band_window": derive_report.band_window,
-    "scored_dimension": derive_report.scored_dimension,
+    "craft_ratio": _LATTICE.craft_ratio,
+    "craft_overall": _LATTICE.craft_overall,
+    "defect_density": _LATTICE.defect_density,
+    "position": _LATTICE.position,
+    "craft_ceiling": _LATTICE.craft_ceiling,
+    "defect_ceiling": _LATTICE.defect_ceiling,
+    "literary_band_detail": _LATTICE.band_detail,
+    "band_window": _LATTICE.window,
+    "scored_dimension": _LATTICE.scored_dimension,
     "originality_bonus": derive_report.originality_bonus,
     "fidelity_band": derive_report.fidelity_band,
-    "score_grade": derive_report.score_grade,
-    "normalized_score": derive_report.normalized_score,
-    "derive_scores": derive_report.derive_scores,
+    "score_grade": band_lattice.score_grade,
+    "normalized_score": band_lattice.normalized_score,
+    "derive_scores": lambda *a, **kw: derive_report.derive_scores(
+        *a, lattice=_LATTICE, **kw
+    ),
 }
 
 LITERARY_SEATS = sorted(derive_report.LITERARY_SEATS)
@@ -219,11 +226,11 @@ def all_cases() -> dict[str, Any]:
         # craft 恰好压线与恰好不足
         ("craft_yes_others_no",
          lambda s, c: ("YES", "none")
-         if c in derive_report.CRAFT_SETS.get(s, frozenset()) else ("NO", "low"),
+         if c in _LATTICE.rubric.craft_set(s) else ("NO", "low"),
          every_seat, 1),
         ("craft_no_others_yes",
          lambda s, c: ("NO", "low")
-         if c in derive_report.CRAFT_SETS.get(s, frozenset()) else ("YES", "none"),
+         if c in _LATTICE.rubric.craft_set(s) else ("YES", "none"),
          every_seat, 1),
         # 只让一条 veto 失败
         ("single_veto_high",

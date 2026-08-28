@@ -17,10 +17,13 @@ SOURCE = ROOT / "tests" / "synthetic" / "source.md"
 BRIEF = ROOT / "tests" / "synthetic" / "brief.md"
 
 sys.path.insert(0, str(SCRIPTS))
+import band_lattice  # noqa: E402
 import derive_report  # noqa: E402
 from lit_panel_common import ContractError, parse_criteria, validate_seat_output  # noqa: E402
 
 METADATA = parse_criteria(SKILL / "references" / "criteria")
+# 评分格已迁入 band_lattice（阶段 0）；带位与窗口的断言改为直接面向该接口。
+LATTICE = band_lattice.BandLattice(band_lattice.Rubric(METADATA))
 CRAFT_SETS = {
     "lit-structure": ("N3", "TW2", "TW4", "SC1"),
     "lit-character": ("P2", "P3", "P4", "P7"),
@@ -973,31 +976,31 @@ class RuntimeContractTests(unittest.TestCase):
         for label, overrides, craft, defect, expected in cases:
             with self.subTest(case=label):
                 rows = core_judgments(overrides)
-                self.assertEqual(derive_report.craft_ceiling(rows), craft)
-                self.assertEqual(derive_report.defect_ceiling(rows), defect)
+                self.assertEqual(LATTICE.craft_ceiling(rows), craft)
+                self.assertEqual(LATTICE.defect_ceiling(rows), defect)
                 self.assertEqual(
-                    derive_report.literary_band_detail(rows, CORE_SEATS, False), expected
+                    LATTICE.band_detail(rows, CORE_SEATS, False), expected
                 )
 
     def test_record_type_window_opens_only_below_the_overall_craft_gate(self) -> None:
         """记录型 is B's sub-level at [68,74], reached only when craft_overall < 0.3."""
-        self.assertEqual(derive_report.band_window("B", True), (68, 74))
-        self.assertEqual(derive_report.band_window("B", False), (75, 84))
-        self.assertIsNone(derive_report.band_window("N/A", False))
+        self.assertEqual(LATTICE.window("B", True), (68, 74))
+        self.assertEqual(LATTICE.window("B", False), (75, 84))
+        self.assertIsNone(LATTICE.window("N/A", False))
 
         # One core seat's craft withheld leaves craft_overall at 0.75 — plain B.
         partial = core_judgments(
             {(seat, cid): ("NA", "none") for seat, cid in ALL_CRAFT_IDS if seat == "lit-prose"}
         )
-        self.assertAlmostEqual(derive_report.craft_overall(partial), 0.75)
-        self.assertFalse(derive_report.literary_band_detail(partial, CORE_SEATS, False)[1])
+        self.assertAlmostEqual(LATTICE.craft_overall(partial), 0.75)
+        self.assertFalse(LATTICE.band_detail(partial, CORE_SEATS, False)[1])
 
         # All craft withheld puts craft_overall at 0, under the 0.3 gate.
         none_affirmed = core_judgments({pair: ("NA", "none") for pair in ALL_CRAFT_IDS})
-        self.assertEqual(derive_report.craft_overall(none_affirmed), 0.0)
-        band, demoted = derive_report.literary_band_detail(none_affirmed, CORE_SEATS, False)
+        self.assertEqual(LATTICE.craft_overall(none_affirmed), 0.0)
+        band, demoted = LATTICE.band_detail(none_affirmed, CORE_SEATS, False)
         self.assertEqual((band, demoted), ("B", True))
-        self.assertEqual(derive_report.band_window(band, demoted), (68, 74))
+        self.assertEqual(LATTICE.window(band, demoted), (68, 74))
 
     def test_craft_criteria_never_enter_the_defect_ledger(self) -> None:
         """A craft NO must cost only its positive evidence, never a second tier deduction.
@@ -1009,23 +1012,23 @@ class RuntimeContractTests(unittest.TestCase):
         craft_no = core_judgments({("lit-structure", "N3"): ("NO", "high")})
         plain_no = core_judgments({("lit-structure", "N1"): ("NO", "high")})
 
-        self.assertEqual(derive_report.defect_density("lit-structure", craft_no), 0.0)
+        self.assertEqual(LATTICE.defect_density("lit-structure", craft_no), 0.0)
         self.assertAlmostEqual(
-            derive_report.defect_density("lit-structure", plain_no), 2 / 14
+            LATTICE.defect_density("lit-structure", plain_no), 2 / 14
         )
-        self.assertEqual(derive_report.craft_ratio("lit-structure", craft_no), 0.75)
-        self.assertEqual(derive_report.craft_ratio("lit-structure", plain_no), 1.0)
+        self.assertEqual(LATTICE.craft_ratio("lit-structure", craft_no), 0.75)
+        self.assertEqual(LATTICE.craft_ratio("lit-structure", plain_no), 1.0)
         self.assertNotEqual(
-            derive_report.position("lit-structure", craft_no),
-            derive_report.position("lit-structure", plain_no),
+            LATTICE.position("lit-structure", craft_no),
+            LATTICE.position("lit-structure", plain_no),
         )
 
         # A craft NO and a craft NA are indistinguishable to the score: both are simply
         # absent positive evidence, which is the whole point of the 0.6.0 correction.
         craft_na = core_judgments({("lit-structure", "N3"): ("NA", "none")})
         self.assertEqual(
-            derive_report.position("lit-structure", craft_no),
-            derive_report.position("lit-structure", craft_na),
+            LATTICE.position("lit-structure", craft_no),
+            LATTICE.position("lit-structure", craft_na),
         )
 
     def test_total_stays_inside_its_band_window_unless_fidelity_caps_it(self) -> None:
@@ -1048,7 +1051,7 @@ class RuntimeContractTests(unittest.TestCase):
                 )
 
                 self.assertEqual(result["bands"]["literary"], expected_band)
-                low, high = derive_report.BAND_WINDOWS[label]
+                low, high = band_lattice.BAND_WINDOWS[label]
                 self.assertGreaterEqual(result["scores"]["total"], low)
                 self.assertLessEqual(result["scores"]["total"], high)
                 for dimension in ("structure", "character", "prose", "resonance"):
@@ -1073,7 +1076,7 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["bands"]["literary"], "A")
             self.assertEqual(result["bands"]["fidelity"], "C")
             self.assertEqual(result["scores"]["total"], 45)
-            self.assertLess(result["scores"]["total"], derive_report.BAND_WINDOWS["A"][0])
+            self.assertLess(result["scores"]["total"], band_lattice.BAND_WINDOWS["A"][0])
 
     def test_anchor_comparison_is_validated_and_flags_divergence_for_arbitration(self) -> None:
         """An anchor placement two ranks away from the derived band needs a human."""

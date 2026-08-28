@@ -243,25 +243,43 @@ def iter_seat_output_paths(path: Path) -> Iterable[Path]:
     yield from files
 
 
-def parse_criteria(criteria_dir: Path) -> dict[tuple[str, str], dict[str, str]]:
-    """Parse seat, tier and polarity from the canonical criteria Markdown tables."""
-    result: dict[tuple[str, str], dict[str, str]] = {}
+def parse_criteria(criteria_dir: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    """Parse seat, tier, polarity and craft membership from the criteria Markdown.
+
+    判据表是这四项事实的唯一真源。`craft` 曾以硬编码常量的形式在 derive_report.py
+    另存一份、与本文件的散文描述互不同步（散文那份一度停留在已废止的
+    formula 0.5.0-anchored），现统一由 `## craft set 判据集` 小节解析。
+    """
+    result: dict[tuple[str, str], dict[str, Any]] = {}
     for path in sorted(criteria_dir.glob("[0-9][0-9]-*.md")):
         content = path.read_text(encoding="utf-8")
         seat_match = re.search(r"(lit-[a-z0-9-]+)", content.splitlines()[0])
         if seat_match is None:
             raise ContractError(f"判据文件首行缺少 agent name: {path}")
         seat = seat_match.group(1)
-        tier: str | None = None
+        section: str | None = None
+        craft_ids: set[str] = set()
         for line in content.splitlines():
             heading = re.match(r"^##\s+(veto|core|extended)\s+判据表", line)
             if heading:
-                tier = heading.group(1)
+                section = heading.group(1)
                 continue
-            if tier is None or not line.startswith("|"):
+            if re.match(r"^##\s+craft set", line):
+                section = "craft"
+                continue
+            if line.startswith("## "):
+                # 其他小节不得继承上一节的 tier，否则表格会被误读成判据行。
+                section = None
+                continue
+            if section is None or not line.startswith("|"):
                 continue
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-            if len(cells) < 2 or CRITERION_RE.fullmatch(cells[0]) is None:
+            if not cells or CRITERION_RE.fullmatch(cells[0]) is None:
+                continue
+            if section == "craft":
+                craft_ids.add(cells[0])
+                continue
+            if len(cells) < 2:
                 continue
             polarity = cells[1]
             if polarity not in {"[通过]", "[风险]"}:
@@ -269,33 +287,20 @@ def parse_criteria(criteria_dir: Path) -> dict[tuple[str, str], dict[str, str]]:
             key = (seat, cells[0])
             if key in result:
                 raise ContractError(f"重复判据: {seat}:{cells[0]}")
-            result[key] = {"tier": tier, "polarity": polarity, "source": str(path)}
+            result[key] = {
+                "tier": section,
+                "polarity": polarity,
+                "source": str(path),
+                "craft": False,
+            }
+        unknown = sorted(cid for cid in craft_ids if (seat, cid) not in result)
+        if unknown:
+            raise ContractError(
+                f"craft set 引用了本席不存在的判据 {', '.join(unknown)}: {path}"
+            )
+        for cid in craft_ids:
+            result[(seat, cid)]["craft"] = True
     return result
-
-
-def is_problem(polarity: str, verdict: str) -> bool:
-    return (polarity == "[通过]" and verdict == "NO") or (
-        polarity == "[风险]" and verdict == "YES"
-    )
-
-
-def locate_quote(path: Path | None, needle: str) -> str | None:
-    """Find the first literal match without retaining an unbounded source tree."""
-    if path is None:
-        return None
-    if path.is_file():
-        return str(path) if needle in path.read_text(encoding="utf-8") else None
-    if path.is_dir():
-        return next(
-            (
-                str(candidate)
-                for candidate in sorted(path.rglob("*"))
-                if candidate.is_file()
-                and needle in candidate.read_text(encoding="utf-8")
-            ),
-            None,
-        )
-    raise ContractError(f"来源路径不存在: {path}")
 
 
 def build_verification_receipt(

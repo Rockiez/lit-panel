@@ -8,11 +8,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from band_lattice import (
+    BandLattice,
+    JudgmentVector,
+    Rubric,
+    is_problem,
+    normalized_score,
+    score_grade,
+)
 from lit_panel_common import (
     ContractError,
     criterion_key,
     digest_path,
-    is_problem,
     iter_seat_output_paths,
     output_identity,
     parse_criteria,
@@ -37,40 +44,9 @@ LITERARY_DIMENSIONS = {
 SCORE_FORMULA_VERSION = "0.6.0-band-anchored"
 EMPTY_SCORE_BASELINE = 50
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 3}
-CRAFT_SETS = {
-    "lit-structure": frozenset({"N3", "TW2", "TW4", "SC1"}),
-    "lit-character": frozenset({"P2", "P3", "P4", "P7"}),
-    "lit-prose": frozenset({"L5", "L7", "TW3"}),
-    "lit-resonance": frozenset({"E3", "E6", "E7", "TW14"}),
-}
 
-# 以下常数一律 provisional：来源是 2026-08-26 的 18 篇锚文活体校准
-# （codex 主评，3 篇 claude 跨模型交叉），尚无独立语料复核。带位层在该校准中
-# 达到 88.9% 精确一致、零 ≥2 档偏差；分数层因此改为带位的投影，不再独立导出。
-CRAFT_GATE_RATIO = 0.6  # 逐席 craft 天花板：四核心席都达标才够 A
-CRAFT_OVERALL_GATE_RATIO = 0.3  # 整体 craft 天花板：低于此线是 B 的记录型子级
-BAND_CEILING_ORDER = ("A", "B", "记录型", "C")  # 由宽到严，min(带位) 取序号更大者
-BAND_WINDOWS = {
-    "A": (85, 94),
-    "A候选（待人工确认）": (85, 94),
-    "B": (75, 84),
-    "记录型": (68, 74),
-    "C": (45, 59),
-}
-DEFAULT_BASE_WEIGHTS = {
-    "lit-structure": 0.25,
-    "lit-character": 0.25,
-    "lit-prose": 0.25,
-    "lit-resonance": 0.25,
-}
-POSITION_CRAFT_WEIGHT = 0.5  # 带内定位中正向工艺证据的份额
-POSITION_CLEAN_WEIGHT = 0.5  # 带内定位中无缺陷执行的份额
-POSITION_MEAN_WEIGHT = 0.7  # 总分定位取加权均值的份额
-POSITION_MIN_WEIGHT = 0.3  # 总分定位取最短板的份额
-ORIGINALITY_POSITION_BONUS = {5: 0.05, 3: 0.03, 0: 0.0}
-SLOP_POSITION_PENALTY = 0.02
-SLOP_POSITION_PENALTY_CAP = 0.10
-DEFECT_TIER_WEIGHTS = {"veto": 3, "core": 2, "extended": 1}
+# 带位格的判据集、天花板门限、窗口与定位权重现由 band_lattice 持有；
+# craft set 的真源是判据表的 `## craft set 判据集` 小节，此处不再留副本。
 
 BAND_RANKS = {"A": 3.0, "A候选（待人工确认）": 3.0, "B": 2.0, "C": 1.0}
 PLACEMENT_RANKS = {"接近A": 3.0, "介于A-B": 2.5, "接近B": 2.0, "介于B-C": 1.5, "低于C": 1.0}
@@ -210,124 +186,6 @@ def validate_canonical_run(
             raise ContractError(f"执行回执 packet_sha256 不匹配: {packet_name}")
 
 
-def craft_ratio(
-    seat: str,
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-) -> float:
-    """Share of the seat's positive craft criteria that were actually affirmed."""
-    craft_ids = CRAFT_SETS.get(seat)
-    if not craft_ids:
-        return 0.0
-    affirmed = {
-        criterion["id"]
-        for output, criterion, _ in valid
-        if output["seat"] == seat
-        and criterion["id"] in craft_ids
-        and criterion["verdict"] == "YES"
-    }
-    return len(affirmed) / len(craft_ids)
-
-
-def craft_overall(
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-) -> float:
-    """Arithmetic mean of the four core seats' craft ratios."""
-    seats = sorted(LITERARY_SEATS)
-    return sum(craft_ratio(seat, valid) for seat in seats) / len(seats)
-
-
-def defect_density(
-    seat: str,
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-) -> float:
-    """Tier-weighted share of the seat's decided NON-craft criteria that came back a problem.
-
-    Craft rows are excluded on purpose: they carry positive evidence through
-    craft_ratio only, and must never also be charged as defects.
-    """
-    craft_ids = CRAFT_SETS.get(seat, frozenset())
-    decided = 0
-    failed = 0
-    for output, criterion, metadata in valid:
-        if output["seat"] != seat or criterion["id"] in craft_ids:
-            continue
-        if criterion["verdict"] not in {"YES", "NO"}:
-            continue
-        weight = DEFECT_TIER_WEIGHTS[metadata["tier"]]
-        decided += weight
-        if is_problem(metadata["polarity"], criterion["verdict"]):
-            failed += weight
-    return failed / decided if decided else 0.0
-
-
-def position(
-    seat: str,
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-) -> float:
-    """Where the seat sits inside its band window, in [0, 1]."""
-    return POSITION_CRAFT_WEIGHT * craft_ratio(seat, valid) + POSITION_CLEAN_WEIGHT * (
-        1.0 - defect_density(seat, valid)
-    )
-
-
-def craft_ceiling(
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-) -> str:
-    """Highest band the positive craft evidence alone can support."""
-    if all(craft_ratio(seat, valid) >= CRAFT_GATE_RATIO for seat in sorted(LITERARY_SEATS)):
-        return "A"
-    return "B" if craft_overall(valid) >= CRAFT_OVERALL_GATE_RATIO else "记录型"
-
-
-def defect_ceiling(
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-) -> str:
-    """Highest band the defect record alone can support (the pre-existing red lines)."""
-    rows = [row for row in valid if row[0]["seat"] in LITERARY_SEATS]
-    problems = [row for row in rows if is_problem(row[2]["polarity"], row[1]["verdict"])]
-    if any(row[2]["tier"] == "veto" and row[1]["severity"] == "high" for row in problems):
-        return "C"
-    if any(row[2]["tier"] in {"veto", "core"} for row in problems):
-        return "B"
-    return "A"
-
-
-def literary_band_detail(
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-    covered_seats: set[str],
-    naive_unwilling: bool,
-) -> tuple[str, bool]:
-    """Return the band plus whether it is the 记录型 sub-level of B.
-
-    The band is the stricter of two independent ceilings. 记录型 is not part of the
-    public band vocabulary: it surfaces as B carrying the demotion flag, which only
-    moves the score window and the markdown annotation.
-    """
-    if not LITERARY_SEATS.issubset(covered_seats):
-        return "N/A", False
-    ceiling = max(
-        (craft_ceiling(valid), defect_ceiling(valid)), key=BAND_CEILING_ORDER.index
-    )
-    if ceiling == "记录型":
-        return "B", True
-    if ceiling == "A":
-        return ("A候选（待人工确认）" if naive_unwilling else "A"), False
-    return ceiling, False
-
-
-def band_window(band: str, demoted: bool) -> tuple[int, int] | None:
-    """Score window for a band, or None when no band formed (N/A keeps the fallback chain)."""
-    return BAND_WINDOWS["记录型"] if demoted else BAND_WINDOWS.get(band)
-
-
-def literary_band(
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-    covered_seats: set[str],
-    naive_unwilling: bool,
-) -> str:
-    return literary_band_detail(valid, covered_seats, naive_unwilling)[0]
-
-
 def anchor_arbitration(outputs: list[dict[str, Any]], literary: str | None) -> list[dict[str, Any]]:
     """Flag seats whose anchor placement disagrees with the derived band by ≥2 ranks."""
     band_rank = BAND_RANKS.get(literary or "")
@@ -370,38 +228,6 @@ def recommendation(fidelity: str, literary: str) -> str:
     return "修订后交付"
 
 
-def normalized_score(value: float) -> int | float:
-    rounded = float(round(max(0.0, min(100.0, value)), 2))
-    return int(rounded) if rounded.is_integer() else rounded
-
-
-def score_grade(value: int | float) -> str:
-    if value >= 90:
-        return "A"
-    if value >= 85:
-        return "A-"
-    if value >= 80:
-        return "B+"
-    if value >= 70:
-        return "B"
-    if value >= 60:
-        return "C+"
-    if value >= 45:
-        return "C"
-    return "D"
-
-
-def scored_dimension(
-    seat: str,
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
-    window: tuple[int, int],
-) -> dict[str, int | float | str]:
-    """Project the seat's position into the run's band window, keeping the four seats comparable."""
-    low, high = window
-    score = normalized_score(low + (high - low) * position(seat, valid))
-    return {"score": score, "grade": score_grade(score)}
-
-
 def originality_bonus(
     valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
 ) -> int:
@@ -420,15 +246,22 @@ def originality_bonus(
 
 
 def derive_scores(
-    judgments: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]],
+    judgments: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]],
     outputs: list[dict[str, Any]],
     *,
+    lattice: BandLattice,
     blockers: list[str] | None = None,
     provisional_reasons: list[str] | None = None,
     formal: bool | None = None,
     fidelity: str | None,
     reader_warning: bool,
 ) -> dict[str, Any]:
+    """合成评分视图：带位窗口投影归 band_lattice，回退链与证据状态归本函数。
+
+    窗口投影必须与 band_lattice 同源，否则将来的可达性模型会与实际评分漂移；
+    回退链（未覆盖文学维度时依次退到读者体验/AI 洁净度/忠实度/固定基线）与
+    provisional 状态是报告层策略，不属于带位格。
+    """
     legacy_contract = formal is not None and blockers is None and provisional_reasons is None
     blockers = [] if blockers is None else blockers
     provisional_reasons = [] if provisional_reasons is None else provisional_reasons
@@ -451,11 +284,11 @@ def derive_scores(
             "评分席位未覆盖（未参与对应维度）: " + ", ".join(missing_seats)
         )
 
-    band, demoted = literary_band_detail(judgments, covered_seats, reader_warning)
-    window = band_window(band, demoted)
+    band, demoted = lattice.band_detail(judgments, covered_seats, reader_warning)
+    window = lattice.window(band, demoted)
     if window is not None:
         for dimension, seat in LITERARY_DIMENSIONS.items():
-            dimensions[dimension] = scored_dimension(seat, judgments, window)
+            dimensions[dimension] = lattice.scored_dimension(seat, judgments, window)
 
     slop_problems = sum(
         output["seat"] == "lit-slop"
@@ -498,21 +331,15 @@ def derive_scores(
 
     bonus = originality_bonus(judgments) if "lit-originality" in covered_seats else 0
     if window is not None:
-        low, high = window
-        seats = sorted(LITERARY_SEATS)
-        positions = [position(seat, judgments) for seat in seats]
-        weights = [DEFAULT_BASE_WEIGHTS[seat] for seat in seats]
-        weighted_mean = sum(
-            weight * value for weight, value in zip(weights, positions)
-        ) / sum(weights)
-        placement = POSITION_MEAN_WEIGHT * weighted_mean + POSITION_MIN_WEIGHT * min(positions)
-        placement += ORIGINALITY_POSITION_BONUS[bonus]
-        if "lit-slop" in covered_seats:
-            placement -= min(
-                SLOP_POSITION_PENALTY_CAP, SLOP_POSITION_PENALTY * slop_problems
-            )
-        placement = max(0.0, min(1.0, placement))
-        total = low + (high - low) * placement
+        total = lattice.project(
+            window,
+            lattice.placement(
+                judgments,
+                originality_bonus=bonus,
+                slop_problems=slop_problems,
+                slop_covered="lit-slop" in covered_seats,
+            ),
+        )
     elif reader_score is not None:
         total = reader_score - slop_penalty + bonus
         provisional_reasons.append("未覆盖文学维度，总分回退使用读者体验基线")
@@ -839,6 +666,7 @@ def main() -> int:
             read_json(args.verification_receipt), records, args.text, args.source
         )
         metadata = parse_criteria(args.criteria_dir)
+        lattice = BandLattice(Rubric(metadata))
         validate_canonical_run(
             manifest,
             execution,
@@ -859,8 +687,8 @@ def main() -> int:
         return 2
 
     invalidated = set(receipt["invalidated_criteria"])
-    judgments: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]] = []
-    valid: list[tuple[dict[str, Any], dict[str, Any], dict[str, str]]] = []
+    judgments: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+    dropped: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
     arbitration: list[dict[str, Any]] = []
     try:
         for output in outputs:
@@ -870,17 +698,22 @@ def main() -> int:
                 if meta is None:
                     raise ContractError(f"未注册判据 {key}")
                 validate_fidelity_semantics(output, criterion, meta)
-                judgments.append((output, criterion, meta))
+                row = (output, criterion, meta)
+                judgments.append(row)
                 if key in invalidated:
                     item = finding(output, criterion)
                     item["reason"] = f"引文核验失败，判定作废：{criterion['note']}"
                     arbitration.append(item)
+                    dropped.append(row)
                     continue
-                valid.append((output, criterion, meta))
                 if criterion["verdict"] == "ABSTAIN" or (
                     criterion["verdict"] == "NA" and meta["tier"] == "veto"
                 ):
                     arbitration.append(finding(output, criterion))
+        # 正式带位只认引文核验通过的判定，评分认冻结全量——两个视图不必然导出
+        # 同一个带位，这个二元性此前只存在于两个同形变量名之间。
+        vector = JudgmentVector(judgments, dropped)
+        valid = vector.formal()
 
         problems = [row for row in valid if is_problem(row[2]["polarity"], row[1]["verdict"])]
         for output, criterion, _ in problems:
@@ -954,9 +787,9 @@ def main() -> int:
     )
     covered_seats = {output["seat"] for output in outputs}
     if formal:
-        fidelity: str | None = fidelity_band(valid)
-        band, craft_gate_demoted = literary_band_detail(
-            valid, covered_seats, bool(naive_unwilling_outputs)
+        fidelity: str | None = fidelity_band(vector.formal())
+        band, craft_gate_demoted = lattice.band_detail(
+            vector.formal(), covered_seats, bool(naive_unwilling_outputs)
         )
         literary: str | None = band
         final_recommendation = recommendation(fidelity, band)
@@ -999,10 +832,11 @@ def main() -> int:
     score_provisional_reasons.extend(
         f"忠实度未评测: {key} 判定未决" for key in sorted(unresolved_fidelity)
     )
-    score_fidelity = fidelity_band(judgments)
+    score_fidelity = fidelity_band(vector.frozen())
     scores = derive_scores(
-        judgments,
+        vector.frozen(),
         outputs,
+        lattice=lattice,
         blockers=scoring_execution_issues(manifest, execution, outputs),
         provisional_reasons=score_provisional_reasons,
         fidelity=score_fidelity,

@@ -31,6 +31,8 @@ import band_lattice  # noqa: E402
 import derive_report  # noqa: E402
 
 LEDGER = Path(__file__).resolve().parent / "golden" / "self_consistency_ledger.json"
+# 少于这么多条非 craft extended 判据，该席的缺陷密度就粗到不足以定位。
+MIN_DENSITY_POOL = 3
 
 # 机械带位能形成窗口的全部 (band, demoted) 组合。
 BANDS: tuple[tuple[str, bool], ...] = (
@@ -118,6 +120,24 @@ def audit() -> dict[str, Any]:
         if len(owners) > 1:
             overloaded[label] = owners
 
+    # 检查三：逐席缺陷密度的分辨率。分母只取非 craft 的 extended（§4.2a）修好了
+    # A 带死区，但各席的该类判据数量并不均衡；只有 1 条的席位密度会退化为二值，
+    # 一条判据就决定该席一半的带内位置。这不是理论问题——lit-prose 就是如此。
+    density_levels = {}
+    for seat in sorted(band_lattice.LITERARY_SEATS):
+        pool = [
+            criterion_id
+            for (row_seat, criterion_id), meta in engine.rubric.criteria.items()
+            if row_seat == seat
+            and meta["tier"] == "extended"
+            and criterion_id not in engine.rubric.craft_set(seat)
+        ]
+        if len(pool) < MIN_DENSITY_POOL:
+            density_levels[seat] = {
+                "non_craft_extended": sorted(pool),
+                "density_levels": len(pool) + 1,
+            }
+
     return {
         "scope": (
             "全判定配置（每条判据均为 YES/NO）下的窗口投影路径；"
@@ -125,6 +145,7 @@ def audit() -> dict[str, Any]:
             "modifiers=True：含原创性奖励与 slop 惩罚，与归一化界同口径。"
         ),
         "window_divergences": window_divergences,
+        "coarse_defect_density": density_levels,
         "unreachable_grade_labels": unreachable_labels,
         "overloaded_grade_labels": overloaded,
         "feedback_failures": feedback_failures,
@@ -143,7 +164,12 @@ class SelfConsistencyGate(unittest.TestCase):
             self.skipTest(f"账目已重新生成：{LEDGER}")
         self.assertTrue(LEDGER.exists(), f"缺少自洽性账目 {LEDGER}")
         documented = json.loads(LEDGER.read_text(encoding="utf-8"))
-        for key in ("window_divergences", "unreachable_grade_labels", "overloaded_grade_labels"):
+        for key in (
+            "window_divergences",
+            "unreachable_grade_labels",
+            "overloaded_grade_labels",
+            "coarse_defect_density",
+        ):
             self.assertEqual(
                 observed[key],
                 documented[key],

@@ -1,0 +1,68 @@
+{
+  "feedback_failures": [],
+  "overloaded_grade_labels": {
+    "B": [
+      "B",
+      "记录型"
+    ]
+  },
+  "scope": "全判定配置（每条判据均为 YES/NO）下的窗口投影路径；不含 ABSTAIN/NA 与未覆盖文学维度时的回退链，两者只会让实际区间更宽。modifiers=False：不含原创性奖励与 slop 惩罚。",
+  "unreachable_grade_labels": [
+    "A-",
+    "D"
+  ],
+  "window_divergences": [
+    {
+      "band": "A",
+      "declared_window": [
+        85,
+        94
+      ],
+      "reachable": [
+        91.58,
+        94.0
+      ],
+      "unreachable_span": 6.58,
+      "utilisation": 0.2692
+    },
+    {
+      "band": "B",
+      "declared_window": [
+        75,
+        84
+      ],
+      "reachable": [
+        77.37,
+        83.69
+      ],
+      "unreachable_span": 2.68,
+      "utilisation": 0.7027
+    },
+    {
+      "band": "记录型",
+      "declared_window": [
+        68,
+        74
+      ],
+      "reachable": [
+        68.92,
+        71.79
+      ],
+      "unreachable_span": 3.13,
+      "utilisation": 0.4783
+    },
+    {
+      "band": "C",
+      "declared_window": [
+        45,
+        59
+      ],
+      "reachable": [
+        45.0,
+        58.29
+      ],
+      "unreachable_span": 0.71,
+      "utilisation": 0.9491
+    }
+  ]
+}

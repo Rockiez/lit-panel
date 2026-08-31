@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from itertools import product as _product
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -82,6 +84,71 @@ def score_grade(value: int | float) -> str:
     return "D"
 
 
+def _band_of(ceiling: str) -> tuple[str, bool]:
+    """把天花板换成 (带位, 是否记录型子级)，与 band_detail 的收尾逻辑一致。
+
+    可达性计算不考虑素读者预警——`A候选（待人工确认）`与 `A` 共用同一窗口，
+    预警只改带位字符串，不改任何分数。
+    """
+    if ceiling == "记录型":
+        return "B", True
+    return ceiling, False
+
+
+@dataclass(frozen=True)
+class SeatState:
+    """一席在全判定前提下的约简状态。带位与带内定位只透过这四个量看该席。"""
+
+    seat: str
+    craft_ratio: float
+    defect_density: float
+    has_veto_high: bool
+    has_core_problem: bool
+    failed: frozenset[str] = field(default_factory=frozenset)
+
+    def position(self) -> float:
+        return POSITION_CRAFT_WEIGHT * self.craft_ratio + POSITION_CLEAN_WEIGHT * (
+            1.0 - self.defect_density
+        )
+
+
+@dataclass(frozen=True)
+class Witness:
+    """一个可达极值点的具体配置，可还原成判定行回灌复算。"""
+
+    states: tuple[SeatState, ...]
+    originality_bonus: int
+    slop_problems: int
+    modifiers: bool
+
+
+@dataclass(frozen=True)
+class Reach:
+    """某带位的可达总分区间，连同两端的见证。"""
+
+    band: str
+    demoted: bool
+    window: tuple[int, int]
+    low: float
+    high: float
+    witness_low: Witness
+    witness_high: Witness
+
+    @property
+    def label(self) -> str:
+        return "记录型" if self.demoted else self.band
+
+    @property
+    def span(self) -> float:
+        return self.high - self.low
+
+    @property
+    def utilisation(self) -> float:
+        """窗口利用率：可达跨度占窗口宽度的比例。"""
+        width = self.window[1] - self.window[0]
+        return self.span / width if width else 0.0
+
+
 class Rubric:
     """评分规则：哪些判据、什么 tier、什么极性、是否属正向工艺集。
 
@@ -142,6 +209,7 @@ class BandLattice:
 
     def __init__(self, rubric: Rubric) -> None:
         self.rubric = rubric
+        self._states: dict[str, list[SeatState]] = {}
 
     # —— 逐席度量 ————————————————————————————————
 
@@ -289,3 +357,216 @@ class BandLattice:
     def project(self, window: tuple[int, int], placement: float) -> float:
         low, high = window
         return low + (high - low) * placement
+
+    # —— 可达性 ————————————————————————————————
+
+    def seat_states(self, seat: str) -> list[SeatState]:
+        """该席在「每条判据都已判定」前提下的全部约简状态。
+
+        约简到 (craft_ratio, defect_density, 是否含高严重度 veto 问题,
+        是否含 veto/core 问题) 四元组——带位与带内定位只透过这四个量看该席。
+        每个状态保留一个见证失败集，供极值回灌验证使用。
+        """
+        cached = self._states.get(seat)
+        if cached is not None:
+            return cached
+        craft_ids = self.rubric.craft_set(seat)
+        entries = [
+            (criterion_id, meta)
+            for (row_seat, criterion_id), meta in sorted(self.rubric.criteria.items())
+            if row_seat == seat
+        ]
+        craft_size = len(craft_ids)
+        non_craft = [(cid, meta) for cid, meta in entries if cid not in craft_ids]
+        denominator = sum(DEFECT_TIER_WEIGHTS[meta["tier"]] for _, meta in non_craft)
+        best: dict[tuple[float, float, bool, bool], frozenset[str]] = {}
+        for mask in range(1 << len(entries)):
+            failed = frozenset(
+                cid for index, (cid, _) in enumerate(entries) if mask >> index & 1
+            )
+            ratio = (craft_size - len(failed & craft_ids)) / craft_size if craft_size else 0.0
+            weighted = sum(
+                DEFECT_TIER_WEIGHTS[meta["tier"]]
+                for cid, meta in non_craft
+                if cid in failed
+            )
+            density = weighted / denominator if denominator else 0.0
+            tiers = {meta["tier"] for cid, meta in entries if cid in failed}
+            key = (ratio, density, "veto" in tiers, bool(tiers & {"veto", "core"}))
+            # 见证取失败最少者，回灌时更容易读懂
+            if key not in best or len(failed) < len(best[key]):
+                best[key] = failed
+        states = [
+            SeatState(seat, ratio, density, high, core, failed)
+            for (ratio, density, high, core), failed in sorted(
+                best.items(), key=lambda item: item[0]
+            )
+        ]
+        self._states[seat] = states
+        return states
+
+    def reachable(
+        self, band: str, *, demoted: bool = False, modifiers: bool = True
+    ) -> Reach | None:
+        """该带位在「每条判据都已判定」前提下可达的总分区间。
+
+        范围限定于全判定配置：ABSTAIN/NA 会缩小 defect_density 的分母、把密度推向
+        极端，因而真实区间只会更宽不会更窄。这个限定是有意的，也必须随结果一起披露。
+
+        算法（见 docs/SCORING_0_7_DESIGN.md §5.3）：placement 对每个 p_i 单调，
+        故在约束可分离的分支内逐席独立取极点即为全局极值；唯一的非可分离约束是
+        craft_overall 的均值门，由枚举 craft 元组精确覆盖。
+        """
+        window = self.window(band, demoted)
+        if window is None:
+            return None
+        seats = sorted(LITERARY_SEATS)
+        # 逐席按 (craft_ratio, 高严重度 veto, veto/core) 分组，组内取 p 的极值
+        grouped: list[dict[tuple[float, bool, bool], tuple[SeatState, SeatState]]] = []
+        for seat in seats:
+            buckets: dict[tuple[float, bool, bool], tuple[SeatState, SeatState]] = {}
+            for state in self.seat_states(seat):
+                key = (state.craft_ratio, state.has_veto_high, state.has_core_problem)
+                low_state, high_state = buckets.get(key, (state, state))
+                if state.position() < low_state.position():
+                    low_state = state
+                if state.position() > high_state.position():
+                    high_state = state
+                buckets[key] = (low_state, high_state)
+            grouped.append(buckets)
+
+        target = (band, demoted)
+        best_low: tuple[float, tuple[SeatState, ...]] | None = None
+        best_high: tuple[float, tuple[SeatState, ...]] | None = None
+        bonus_low, bonus_high = (0, 5) if modifiers else (0, 0)
+        slop_low = (
+            int(SLOP_POSITION_PENALTY_CAP / SLOP_POSITION_PENALTY) if modifiers else 0
+        )
+        for combo in _product(*(sorted(bucket) for bucket in grouped)):
+            craft = self._craft_ceiling_from([key[0] for key in combo])
+            defect = self._defect_ceiling_from(combo)
+            ceiling = max((craft, defect), key=BAND_CEILING_ORDER.index)
+            if _band_of(ceiling) != target:
+                continue
+            lows = tuple(grouped[index][key][0] for index, key in enumerate(combo))
+            highs = tuple(grouped[index][key][1] for index, key in enumerate(combo))
+            low_value = self.project(
+                window, self._placement_from(lows, bonus_low, slop_low, modifiers)
+            )
+            high_value = self.project(
+                window, self._placement_from(highs, bonus_high, 0, modifiers)
+            )
+            if best_low is None or low_value < best_low[0]:
+                best_low = (low_value, lows)
+            if best_high is None or high_value > best_high[0]:
+                best_high = (high_value, highs)
+        if best_low is None or best_high is None:
+            return None
+        return Reach(
+            band=band,
+            demoted=demoted,
+            window=window,
+            low=best_low[0],
+            high=best_high[0],
+            witness_low=Witness(best_low[1], bonus_low, slop_low, modifiers),
+            witness_high=Witness(best_high[1], bonus_high, 0, modifiers),
+        )
+
+    # —— 可达性的内部件 ————————————————————————————
+
+    @staticmethod
+    def _craft_ceiling_from(ratios: list[float]) -> str:
+        if all(ratio >= CRAFT_GATE_RATIO for ratio in ratios):
+            return "A"
+        overall = sum(ratios) / len(ratios)
+        return "B" if overall >= CRAFT_OVERALL_GATE_RATIO else "记录型"
+
+    @staticmethod
+    def _defect_ceiling_from(combo: tuple[tuple[float, bool, bool], ...]) -> str:
+        if any(key[1] for key in combo):
+            return "C"
+        if any(key[2] for key in combo):
+            return "B"
+        return "A"
+
+    @staticmethod
+    def _placement_from(
+        states: tuple[SeatState, ...], bonus: int, slop_problems: int, modifiers: bool
+    ) -> float:
+        seats = sorted(LITERARY_SEATS)
+        positions = [state.position() for state in states]
+        weights = [DEFAULT_BASE_WEIGHTS[seat] for seat in seats]
+        weighted_mean = sum(
+            weight * value for weight, value in zip(weights, positions)
+        ) / sum(weights)
+        value = POSITION_MEAN_WEIGHT * weighted_mean + POSITION_MIN_WEIGHT * min(
+            positions
+        )
+        value += ORIGINALITY_POSITION_BONUS[bonus]
+        if modifiers:
+            value -= min(
+                SLOP_POSITION_PENALTY_CAP, SLOP_POSITION_PENALTY * slop_problems
+            )
+        return max(0.0, min(1.0, value))
+
+    def verify(self, reach: Reach) -> list[str]:
+        """把极值点回灌真实的 band_detail / placement / project 复算。
+
+        可达性模型不允许与实现各说各话——A 带死区当初正是因为没有任何东西
+        在做这一步而穿过了校准门禁。返回不一致说明，空列表表示对得上。
+        """
+        problems: list[str] = []
+        for label, witness, expected in (
+            ("low", reach.witness_low, reach.low),
+            ("high", reach.witness_high, reach.high),
+        ):
+            rows = self.materialize(witness)
+            band, demoted = self.band_detail(rows, set(LITERARY_SEATS), False)
+            if (band, demoted) != (reach.band, reach.demoted):
+                problems.append(
+                    f"{label} 见证复算出的带位是 {band}(demoted={demoted})，"
+                    f"模型声称 {reach.band}(demoted={reach.demoted})"
+                )
+                continue
+            window = self.window(band, demoted)
+            assert window is not None
+            actual = self.project(
+                window,
+                self.placement(
+                    rows,
+                    originality_bonus=witness.originality_bonus,
+                    slop_problems=witness.slop_problems,
+                    slop_covered=witness.modifiers,
+                ),
+            )
+            if abs(actual - expected) > 1e-9:
+                problems.append(
+                    f"{label} 见证复算总分 {actual!r}，模型声称 {expected!r}"
+                )
+        return problems
+
+    def materialize(self, witness: Witness) -> list[Row]:
+        """把见证还原成真实的判定行，供回灌验证使用。"""
+        rows: list[Row] = []
+        for state in witness.states:
+            output = {"seat": state.seat}
+            for (seat, criterion_id), meta in sorted(self.rubric.criteria.items()):
+                if seat != state.seat:
+                    continue
+                failing = criterion_id in state.failed
+                passing_verdict = "YES" if meta["polarity"] == "[通过]" else "NO"
+                failing_verdict = "NO" if meta["polarity"] == "[通过]" else "YES"
+                rows.append((
+                    output,
+                    {
+                        "id": criterion_id,
+                        "verdict": failing_verdict if failing else passing_verdict,
+                        "severity": "high"
+                        if failing and meta["tier"] == "veto" and state.has_veto_high
+                        else ("low" if failing else "none"),
+                        "quotes": [],
+                        "note": f"{seat}:{criterion_id}",
+                    },
+                    meta,
+                ))
+        return rows

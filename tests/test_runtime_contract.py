@@ -448,25 +448,47 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["schema_version"], "1.2")
             self.assertEqual(
                 result["scores"],
-                {
+{
                     "available": True,
-                    "status": "verified",
-                    "status_reasons": [],
-                    "formula_version": "0.6.0-band-anchored",
+                    "formula_version": "0.7.0-full-partition",
                     "total": 94,
                     "grade": "A",
                     "originality_bonus": 5,
                     "reader_warning": False,
                     "dimensions": {
-                        "structure": {"score": 94, "grade": "A"},
-                        "character": {"score": 94, "grade": "A"},
-                        "prose": {"score": 94, "grade": "A"},
-                        "resonance": {"score": 94, "grade": "A"},
-                        "ai_cleanliness": {"score": 100, "grade": "A"},
-                        "reader_experience": {"score": 85, "grade": "A-"},
-                        "fidelity": None,
+                        "structure": {
+                            "score": 94,
+                            "grade": "A"
+                        },
+                        "character": {
+                            "score": 94,
+                            "grade": "A"
+                        },
+                        "prose": {
+                            "score": 94,
+                            "grade": "A"
+                        },
+                        "resonance": {
+                            "score": 94,
+                            "grade": "A"
+                        }
                     },
-                },
+                    "diagnostics": {
+                        "ai_cleanliness": {
+                            "detected": 0,
+                            "severe": 0,
+                            "mild": 0
+                        },
+                        "reader_experience": {
+                            "readers": 1,
+                            "problems": 0,
+                            "share_warning": False
+                        },
+                        "fidelity": None
+                    },
+                    "status": "verified",
+                    "status_reasons": []
+                }
             )
             markdown = (root / "report.md").read_text(encoding="utf-8")
             self.assertIn("## 总分卡", markdown)
@@ -476,19 +498,22 @@ class RuntimeContractTests(unittest.TestCase):
     def test_invalid_quotes_keep_provisional_scores_from_frozen_judgments(self) -> None:
         """Break caught: a bad quote erases a score instead of degrading its evidence status.
 
-        The frozen N1 problem still lands the run in band B [75,84]; structure keeps its
-        full craft ratio and carries one core defect out of 14 tier-weighted non-craft
-        units, so p = 0.5+0.5*(1-2/14) = 0.9286 → 75+9*0.9286 = 83.36.
+        The frozen N1 problem still lands the run in band B [68,79]; N1 is core, so it
+        caps the band without touching the defect density (which now counts only
+        non-craft extended rows). Structure therefore sits at the top of the band.
         """
         cases = (
-            ("lit-structure", "N1", "lit-structure:N1", "structure", {"score": 83.36, "grade": "B+"}),
-            ("lit-slop", "A1", "lit-slop:A1", "ai_cleanliness", {"score": 97, "grade": "A"}),
+            ("lit-structure", "N1", "lit-structure:N1", "dimensions", "structure",
+             {"score": 79, "grade": "B"}),
+            ("lit-slop", "A1", "lit-slop:A1", "diagnostics", "ai_cleanliness",
+             {"detected": 1, "severe": 1, "mild": 0}),
             (
                 "lit-naive-reader", "R2", "lit-naive-reader@reader-01:R2",
-                "reader_experience", {"score": 75, "grade": "B"},
+                "diagnostics", "reader_experience",
+                {"readers": 1, "problems": 1, "share_warning": False},
             ),
         )
-        for seat, criterion_id, expected_key, dimension, expected_dimension in cases:
+        for seat, criterion_id, expected_key, group, dimension, expected_dimension in cases:
             with self.subTest(seat=seat), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 run_dir, manifest = prepare(root, "standard")
@@ -511,7 +536,7 @@ class RuntimeContractTests(unittest.TestCase):
                     result["scores"]["status_reasons"],
                     [f"引文核验失败: {expected_key}"],
                 )
-                self.assertEqual(result["scores"]["dimensions"][dimension], expected_dimension)
+                self.assertEqual(result["scores"][group][dimension], expected_dimension)
                 markdown = (root / "report.md").read_text(encoding="utf-8")
                 self.assertIn("评分状态：暂定（判定、覆盖或证据降级）", markdown)
                 self.assertIn(f"引文核验失败: {expected_key}", markdown)
@@ -539,9 +564,9 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "verified")
             self.assertEqual(
-                result["scores"]["dimensions"]["character"], {"score": 92.88, "grade": "A"}
+                result["scores"]["dimensions"]["character"], {"score": 92.25, "grade": "A"}
             )
-            self.assertEqual(result["scores"]["total"], 93.92)
+            self.assertEqual(result["scores"]["total"], 93.81)
             self.assertEqual(result["scores"]["status_reasons"], [])
             self.assertEqual(result["arbitration"], [])
 
@@ -558,7 +583,7 @@ class RuntimeContractTests(unittest.TestCase):
             )
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "provisional")
-            self.assertEqual(result["scores"]["total"], 85)
+            self.assertEqual(result["scores"]["total"], 79)
             self.assertIsNone(result["scores"]["dimensions"]["structure"])
             self.assertTrue(
                 any("读者体验基线" in reason for reason in result["scores"]["status_reasons"])
@@ -629,10 +654,10 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "provisional")
             self.assertEqual(
-                result["scores"]["dimensions"]["fidelity"],
-                {"score": 45, "grade": "C"},
+                result["scores"]["diagnostics"]["fidelity"],
+                {"band": "C"},
             )
-            self.assertEqual(result["scores"]["total"], 45)
+            self.assertEqual(result["scores"]["total"], 39)
 
     def test_full_run_without_source_still_scores_every_non_fidelity_dimension(self) -> None:
         """Break caught: missing source clears literary scores instead of only fidelity."""
@@ -658,12 +683,11 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertFalse(result["formal"])
             self.assertTrue(result["scores"]["available"])
             self.assertEqual(result["scores"]["status"], "verified")
-            self.assertIsNone(result["scores"]["dimensions"]["fidelity"])
-            for dimension in (
-                "structure", "character", "prose", "resonance",
-                "ai_cleanliness", "reader_experience",
-            ):
+            self.assertIsNone(result["scores"]["diagnostics"]["fidelity"])
+            for dimension in ("structure", "character", "prose", "resonance"):
                 self.assertIsNotNone(result["scores"]["dimensions"][dimension])
+            for diagnostic in ("ai_cleanliness", "reader_experience"):
+                self.assertIsNotNone(result["scores"]["diagnostics"][diagnostic])
 
     def test_missing_one_of_multiple_scoring_readers_keeps_a_provisional_score(self) -> None:
         """A partial reader panel must not erase the score or masquerade as verified."""
@@ -711,9 +735,9 @@ class RuntimeContractTests(unittest.TestCase):
 
             self.assertEqual(
                 result["scores"]["dimensions"]["structure"],
-                {"score": 83.36, "grade": "B+"},
+                {"score": 79, "grade": "B"},
             )
-            self.assertEqual(result["scores"]["total"], 84)
+            self.assertEqual(result["scores"]["total"], 79)
             self.assertEqual(result["bands"]["literary"], "B")
 
     def test_scorecard_applies_ai_penalty_without_double_counting(self) -> None:
@@ -725,11 +749,11 @@ class RuntimeContractTests(unittest.TestCase):
         costs 9*0.02 = 0.18 and two cost exactly twice that.
         """
         for problem, expected_ai, expected_total in (
-            (("lit-slop", "A1"), {"score": 97, "grade": "A"}, 93.56),
+            (("lit-slop", "A1"), {"detected": 1, "severe": 1, "mild": 0}, 93.02),
             (
                 {("lit-slop", "A1"), ("lit-slop", "A2")},
-                {"score": 94, "grade": "A"},
-                93.38,
+                {"detected": 2, "severe": 2, "mild": 0},
+                92.62,
             ),
         ):
             with self.subTest(problem=problem), tempfile.TemporaryDirectory() as temporary:
@@ -745,7 +769,7 @@ class RuntimeContractTests(unittest.TestCase):
                 )
 
                 self.assertEqual(result["bands"]["literary"], "A")
-                self.assertEqual(result["scores"]["dimensions"]["ai_cleanliness"], expected_ai)
+                self.assertEqual(result["scores"]["diagnostics"]["ai_cleanliness"], expected_ai)
                 self.assertEqual(result["scores"]["total"], expected_total)
 
     def test_scorecard_keeps_originality_bonus_positive_only(self) -> None:
@@ -765,7 +789,7 @@ class RuntimeContractTests(unittest.TestCase):
                 derive(root, seats, receipt, run_dir, execution).read_text(encoding="utf-8")
             )
             self.assertEqual(baseline["scores"]["originality_bonus"], 5)
-            self.assertEqual(baseline["scores"]["total"], 93.74)
+            self.assertEqual(baseline["scores"]["total"], 93.42)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -783,9 +807,9 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             self.assertEqual(result["scores"]["originality_bonus"], 0)
-            self.assertEqual(result["scores"]["total"], 93.29)
+            self.assertEqual(result["scores"]["total"], 92.42)
             self.assertAlmostEqual(
-                baseline["scores"]["total"] - result["scores"]["total"], 0.45, places=2
+                baseline["scores"]["total"] - result["scores"]["total"], 1.0, places=2
             )
 
     def test_scorecard_applies_fidelity_cap_last(self) -> None:
@@ -803,11 +827,11 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                result["scores"]["dimensions"]["fidelity"],
-                {"score": 45, "grade": "C"},
+                result["scores"]["diagnostics"]["fidelity"],
+                {"band": "C"},
             )
-            self.assertEqual(result["scores"]["total"], 45)
-            self.assertEqual(result["scores"]["grade"], "C")
+            self.assertEqual(result["scores"]["total"], 39)
+            self.assertEqual(result["scores"]["grade"], "忠实失败")
             self.assertEqual(result["recommendation"], "重写建议")
 
     def test_record_type_run_without_craft_evidence_is_demoted_to_b(self) -> None:
@@ -834,11 +858,11 @@ class RuntimeContractTests(unittest.TestCase):
             for dimension in ("structure", "character", "prose", "resonance"):
                 self.assertEqual(
                     result["scores"]["dimensions"][dimension],
-                    {"score": 71, "grade": "B"},
+                    {"score": 63.5, "grade": "记录型"},
                     dimension,
                 )
             self.assertEqual(result["scores"]["status"], "verified")
-            self.assertEqual(result["scores"]["total"], 71.3)
+            self.assertEqual(result["scores"]["total"], 64.6)
             markdown = (root / "report.md").read_text(encoding="utf-8")
             self.assertIn(
                 "- 文学带：B（记录型：正向工艺证据未达 A 门）", markdown
@@ -868,11 +892,11 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             dimensions = result["scores"]["dimensions"]
-            self.assertEqual(dimensions["structure"], {"score": 82.07, "grade": "B+"})
+            self.assertEqual(dimensions["structure"], {"score": 79, "grade": "B"})
             for dimension in ("character", "prose", "resonance"):
-                self.assertEqual(dimensions[dimension], {"score": 84, "grade": "B+"}, dimension)
+                self.assertEqual(dimensions[dimension], {"score": 79, "grade": "B"}, dimension)
             self.assertEqual(result["scores"]["originality_bonus"], 5)
-            self.assertEqual(result["scores"]["total"], 83.53)
+            self.assertEqual(result["scores"]["total"], 79)
             self.assertEqual(result["bands"]["literary"], "B")
             mean_only = sum(
                 dimensions[name]["score"]
@@ -883,18 +907,18 @@ class RuntimeContractTests(unittest.TestCase):
     def test_dimension_steps_down_with_the_share_of_affirmed_craft(self) -> None:
         """The craft share and the 0.6 A-gate must move together.
 
-        Prose has three craft rows. Withholding one leaves 2/3 = 0.667, still above the
-        per-seat gate, so the band stays A [85,94] and prose sits at 0.5*0.667+0.5 =
-        0.833 → 92.5. Withholding two drops prose to 1/3, failing the gate: the band
-        falls to B [75,84] and prose to 0.667 → 81. Withholding all three gives 0.5 →
-        79.5, still B because craft_overall (0.75) clears the 0.3 record-type line.
+        Prose has three craft rows, none of them forced YES by a red line, so all three
+        sit in the gate set. Withholding one leaves 2/3 = 0.667, still above the
+        per-seat gate, so the band stays A [80,94]. Withholding two drops the gate ratio
+        to 1/3 and the band falls to B [68,79]. Withholding all three still clears the
+        record-type line, so it stays B.
         """
         cases = (
-            ({("lit-prose", "TW3")}, {"score": 92.5, "grade": "A"}, "A"),
-            ({("lit-prose", "L7"), ("lit-prose", "TW3")}, {"score": 81, "grade": "B+"}, "B"),
+            ({("lit-prose", "TW3")}, {"score": 91.67, "grade": "A"}, "A"),
+            ({("lit-prose", "L7"), ("lit-prose", "TW3")}, {"score": 75.33, "grade": "B"}, "B"),
             (
                 {("lit-prose", "L5"), ("lit-prose", "L7"), ("lit-prose", "TW3")},
-                {"score": 79.5, "grade": "B"},
+                {"score": 73.5, "grade": "B"},
                 "B",
             ),
         )
@@ -934,9 +958,9 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                result["scores"]["dimensions"]["structure"], {"score": 83.04, "grade": "B+"}
+                result["scores"]["dimensions"]["structure"], {"score": 79, "grade": "B"}
             )
-            self.assertEqual(result["scores"]["total"], 83.99)
+            self.assertEqual(result["scores"]["total"], 79)
             self.assertEqual(result["bands"]["literary"], "B")
             self.assertLess(result["scores"]["dimensions"]["structure"]["score"], 83.36)
             self.assertIn(
@@ -984,8 +1008,8 @@ class RuntimeContractTests(unittest.TestCase):
 
     def test_record_type_window_opens_only_below_the_overall_craft_gate(self) -> None:
         """记录型 is B's sub-level at [68,74], reached only when craft_overall < 0.3."""
-        self.assertEqual(LATTICE.window("B", True), (68, 74))
-        self.assertEqual(LATTICE.window("B", False), (75, 84))
+        self.assertEqual(LATTICE.window("B", True), (60, 67))
+        self.assertEqual(LATTICE.window("B", False), (68, 79))
         self.assertIsNone(LATTICE.window("N/A", False))
 
         # One core seat's craft withheld leaves craft_overall at 0.75 — plain B.
@@ -1000,7 +1024,7 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(LATTICE.craft_overall(none_affirmed), 0.0)
         band, demoted = LATTICE.band_detail(none_affirmed, CORE_SEATS, False)
         self.assertEqual((band, demoted), ("B", True))
-        self.assertEqual(LATTICE.window(band, demoted), (68, 74))
+        self.assertEqual(LATTICE.window(band, demoted), (60, 67))
 
     def test_craft_criteria_never_enter_the_defect_ledger(self) -> None:
         """A craft NO must cost only its positive evidence, never a second tier deduction.
@@ -1013,8 +1037,12 @@ class RuntimeContractTests(unittest.TestCase):
         plain_no = core_judgments({("lit-structure", "N1"): ("NO", "high")})
 
         self.assertEqual(LATTICE.defect_density("lit-structure", craft_no), 0.0)
+        # core 判据同样不进密度：它决定带位（缺陷天花板），不决定带内位置。
+        # 把 veto/core 留在分母里正是 A 带死区的成因（§4.2a）。
+        self.assertEqual(LATTICE.defect_density("lit-structure", plain_no), 0.0)
+        extended_no = core_judgments({("lit-structure", "N6"): ("NO", "low")})
         self.assertAlmostEqual(
-            LATTICE.defect_density("lit-structure", plain_no), 2 / 14
+            LATTICE.defect_density("lit-structure", extended_no), 1 / 5
         )
         self.assertEqual(LATTICE.craft_ratio("lit-structure", craft_no), 0.75)
         self.assertEqual(LATTICE.craft_ratio("lit-structure", plain_no), 1.0)
@@ -1075,7 +1103,7 @@ class RuntimeContractTests(unittest.TestCase):
 
             self.assertEqual(result["bands"]["literary"], "A")
             self.assertEqual(result["bands"]["fidelity"], "C")
-            self.assertEqual(result["scores"]["total"], 45)
+            self.assertEqual(result["scores"]["total"], 39)
             self.assertLess(result["scores"]["total"], band_lattice.BAND_WINDOWS["A"][0])
 
     def test_anchor_comparison_is_validated_and_flags_divergence_for_arbitration(self) -> None:
@@ -1311,7 +1339,7 @@ class RuntimeContractTests(unittest.TestCase):
             self.assertEqual(result["scores"]["status"], "provisional")
             # Abstaining everywhere affirms no craft and decides no defect: the score
             # view falls to the 记录型 window [68,74] at p=0.5 → 71.
-            self.assertEqual(result["scores"]["total"], 71)
+            self.assertEqual(result["scores"]["total"], 64.18)
             self.assertTrue(
                 any("评分判据未决" in reason for reason in result["scores"]["status_reasons"])
             )

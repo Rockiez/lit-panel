@@ -102,7 +102,7 @@
       "additionalProperties": false,
       "required": ["placement", "rationale", "quote"],
       "properties": {
-        "placement": { "enum": ["接近A", "介于A-B", "接近B", "介于B-C", "低于C"] },
+        "placement": { "enum": ["接近S", "接近A", "介于A-B", "接近B", "介于B-C", "低于C"] },
         "rationale": { "type": "string", "minLength": 1 },
         "quote": {
           "allOf": [

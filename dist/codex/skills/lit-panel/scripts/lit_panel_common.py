@@ -25,7 +25,7 @@ FIDELITY_STATES = {
     "UNVERIFIABLE",
 }
 CORE_LITERARY_SEATS = {"lit-structure", "lit-character", "lit-prose", "lit-resonance"}
-ANCHOR_PLACEMENTS = {"接近A", "介于A-B", "接近B", "介于B-C", "低于C"}
+ANCHOR_PLACEMENTS = {"接近S", "接近A", "介于A-B", "接近B", "介于B-C", "低于C"}
 
 
 def _load_tiered_quote_verifier() -> Any:

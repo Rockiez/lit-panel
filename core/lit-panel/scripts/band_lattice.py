@@ -32,14 +32,19 @@ LITERARY_SEATS = {"lit-structure", "lit-character", "lit-prose", "lit-resonance"
 # 达到 88.9% 精确一致、零 ≥2 档偏差；分数层因此改为带位的投影，不再独立导出。
 CRAFT_GATE_RATIO = 0.6  # 逐席 craft 天花板：四核心席都达标才够 A
 CRAFT_OVERALL_GATE_RATIO = 0.3  # 整体 craft 天花板：低于此线是 B 的记录型子级
-BAND_CEILING_ORDER = ("A", "B", "记录型", "C")  # 由宽到严，min(带位) 取序号更大者
+BAND_CEILING_ORDER = ("S", "A", "B", "记录型", "C")  # 由宽到严，取序号更大者
+# 带位阶梯是 [0,100] 的完整划分，不留空洞（docs/SCORING_0_7_DESIGN.md §3）。
 BAND_WINDOWS = {
-    "A": (85, 94),
-    "A候选（待人工确认）": (85, 94),
-    "B": (75, 84),
-    "记录型": (68, 74),
-    "C": (45, 59),
+    "S": (95, 100),
+    "A": (80, 94),
+    "A候选（待人工确认）": (80, 94),
+    "B": (68, 79),
+    "记录型": (60, 67),
+    "C": (40, 59),
 }
+FIDELITY_FAILURE_WINDOW = (0, 39)  # 忠实带 C：投影而非钳位，见 §3.1
+FIDELITY_B_CAP = 60  # 忠实带 B：钳位到 B 带下界（B 含记录型子级，跨 60–79）
+FALLBACK_CAP = 79  # 文学带 N/A 时回退总分不得进入 A/S 区间，见 §4.5
 DEFAULT_BASE_WEIGHTS = {
     "lit-structure": 0.25,
     "lit-character": 0.25,
@@ -69,19 +74,18 @@ def normalized_score(value: float) -> int | float:
 
 
 def score_grade(value: int | float) -> str:
-    if value >= 90:
-        return "A"
-    if value >= 85:
-        return "A-"
-    if value >= 80:
-        return "B+"
-    if value >= 70:
-        return "B"
-    if value >= 60:
-        return "C+"
-    if value >= 45:
-        return "C"
-    return "D"
+    """分数所属的带位名。
+
+    这里曾是独立的七级词表（A/A-/B+/B/C+/C/D），与带位边界不对齐，产出过
+    不可达的 `A-`/`D` 与跨带位重载的 `B`。新阶梯是 [0,100] 的完整划分，
+    分数可以唯一反推带位，第三套词表因此取消。见 §4.4。
+    """
+    # 用下界做半开区间：窗口是整数边界而分数是两位小数，逐一比对闭区间会在
+    # 79 与 80 之间留下次整数空洞——正是本次要消掉的那类洞，只是尺度更小。
+    for label in ("S", "A", "B", "记录型", "C"):
+        if value >= BAND_WINDOWS[label][0]:
+            return label
+    return "忠实失败"
 
 
 def _band_of(ceiling: str) -> tuple[str, bool]:
@@ -100,7 +104,8 @@ class SeatState:
     """一席在全判定前提下的约简状态。带位与带内定位只透过这四个量看该席。"""
 
     seat: str
-    craft_ratio: float
+    craft_ratio: float      # 全集，用于带内定位
+    gate_ratio: float       # 未被红线强制的子集，用于 craft 天花板
     defect_density: float
     has_veto_high: bool
     has_core_problem: bool
@@ -158,17 +163,30 @@ class Rubric:
     def __init__(self, criteria: dict[tuple[str, str], dict[str, Any]]) -> None:
         self._criteria = criteria
         craft: dict[str, set[str]] = {}
+        gate: dict[str, set[str]] = {}
         for (seat, criterion_id), meta in criteria.items():
-            if meta.get("craft"):
-                craft.setdefault(seat, set()).add(criterion_id)
+            if not meta.get("craft"):
+                continue
+            craft.setdefault(seat, set()).add(criterion_id)
+            # craft 门只看未被红线强制为 YES 的成员：core/veto 的 craft 成员一旦判否
+            # 就已经由缺陷天花板封顶，再进 craft 门是重复把关，会让门恒开（席 05 的
+            # P2/P3/P4 就是这样让「四席门」变成三席门的）。见 §4.3。
+            if meta["tier"] == "extended":
+                gate.setdefault(seat, set()).add(criterion_id)
         self._craft = {seat: frozenset(ids) for seat, ids in craft.items()}
+        self._gate = {seat: frozenset(ids) for seat, ids in gate.items()}
 
     @classmethod
     def from_criteria_dir(cls, criteria_dir: Path) -> "Rubric":
         return cls(parse_criteria(criteria_dir))
 
     def craft_set(self, seat: str) -> frozenset[str]:
+        """该席全部正向工艺判据——用于带内定位。"""
         return self._craft.get(seat, frozenset())
+
+    def craft_gate_set(self, seat: str) -> frozenset[str]:
+        """该席用于 craft 天花板判定的子集——剔除被红线强制的成员。"""
+        return self._gate.get(seat, frozenset())
 
     @property
     def criteria(self) -> dict[tuple[str, str], dict[str, Any]]:
@@ -210,6 +228,7 @@ class BandLattice:
     def __init__(self, rubric: Rubric) -> None:
         self.rubric = rubric
         self._states: dict[str, list[SeatState]] = {}
+        self._bounds: dict[tuple[str, bool], tuple[float, float]] = {}
 
     # —— 逐席度量 ————————————————————————————————
 
@@ -227,16 +246,34 @@ class BandLattice:
         }
         return len(affirmed) / len(craft_ids)
 
+    def craft_gate_ratio(self, seat: str, rows: list[Row]) -> float:
+        """craft 门用的比例：只算未被红线强制的正向工艺成员。"""
+        gate_ids = self.rubric.craft_gate_set(seat)
+        if not gate_ids:
+            return 0.0
+        affirmed = {
+            criterion["id"]
+            for output, criterion, _ in rows
+            if output["seat"] == seat
+            and criterion["id"] in gate_ids
+            and criterion["verdict"] == "YES"
+        }
+        return len(affirmed) / len(gate_ids)
+
     def craft_overall(self, rows: list[Row]) -> float:
-        """四个核心席 craft 比例的算术平均。"""
+        """四个核心席 craft 门比例的算术平均。"""
         seats = sorted(LITERARY_SEATS)
-        return sum(self.craft_ratio(seat, rows) for seat in seats) / len(seats)
+        return sum(self.craft_gate_ratio(seat, rows) for seat in seats) / len(seats)
 
     def defect_density(self, seat: str, rows: list[Row]) -> float:
-        """该席**非 craft** 已判定判据中按 tier 加权的问题占比。
+        """该席**非 craft 的 extended** 判据中判为问题的占比。
 
-        craft 行被有意排除：它们只通过 craft_ratio 贡献正向证据，
-        绝不同时被计为缺陷。
+        分母只取 extended：veto/core 判据的职责是决定带位（缺陷天花板），
+        不是决定带内位置。把它们留在分母里会稀释密度——在 A 带尤其致命，
+        因为 A 带的前提正是它们全部干净，于是它们只进分母、永不进分子，
+        A 带窗口 73% 因此构造上不可达。见 §1.1 与 §4.2(a)。
+
+        craft 行同样排除：它们只通过 craft_ratio 贡献正向证据，不再计为缺陷。
         """
         craft_ids = self.rubric.craft_set(seat)
         decided = 0
@@ -244,12 +281,13 @@ class BandLattice:
         for output, criterion, metadata in rows:
             if output["seat"] != seat or criterion["id"] in craft_ids:
                 continue
+            if metadata["tier"] != "extended":
+                continue
             if criterion["verdict"] not in {"YES", "NO"}:
                 continue
-            weight = DEFECT_TIER_WEIGHTS[metadata["tier"]]
-            decided += weight
+            decided += 1
             if is_problem(metadata["polarity"], criterion["verdict"]):
-                failed += weight
+                failed += 1
         return failed / decided if decided else 0.0
 
     def position(self, seat: str, rows: list[Row]) -> float:
@@ -263,7 +301,7 @@ class BandLattice:
     def craft_ceiling(self, rows: list[Row]) -> str:
         """仅凭正向工艺证据能支撑到的最高带位。"""
         if all(
-            self.craft_ratio(seat, rows) >= CRAFT_GATE_RATIO
+            self.craft_gate_ratio(seat, rows) >= CRAFT_GATE_RATIO
             for seat in sorted(LITERARY_SEATS)
         ):
             return "A"
@@ -285,13 +323,35 @@ class BandLattice:
 
     # —— 带位与窗口 ————————————————————————————————
 
+    @staticmethod
+    def s_nominated(anchor_placements: dict[str, str] | None) -> bool:
+        """四个核心席的锚文对照是否一致指向「接近S」。
+
+        这是 S 唯一的证据来源：判据向量分辨不出 S 与 A（校准样本里两者的 craft
+        读数重叠），所以 S 必须来自判据表之外的信号。见 §4.1。
+        """
+        if not anchor_placements:
+            return False
+        return all(
+            anchor_placements.get(seat) == "接近S" for seat in sorted(LITERARY_SEATS)
+        )
+
     def band_detail(
-        self, rows: list[Row], covered_seats: set[str], naive_unwilling: bool
+        self,
+        rows: list[Row],
+        covered_seats: set[str],
+        naive_unwilling: bool,
+        *,
+        anchor_placements: dict[str, str] | None = None,
     ) -> tuple[str, bool]:
         """返回带位，以及它是否为 B 的「记录型」子级。
 
         带位取两条独立天花板中更严格者。「记录型」不属于公开带位词表：
         它以 B 加降级标志的形式呈现，只影响分数窗口与报告注记。
+
+        天花板到 A 之后还有两道：素读者传播意愿预警一票否决升 S（「传世」的字面
+        意思就是会被传下去，素读者说不愿转述与之构成定义矛盾，见 §4.1），
+        随后四席锚文对照一致指向「接近S」才升 S。
         """
         if not LITERARY_SEATS.issubset(covered_seats):
             return "N/A", False
@@ -302,7 +362,9 @@ class BandLattice:
         if ceiling == "记录型":
             return "B", True
         if ceiling == "A":
-            return ("A候选（待人工确认）" if naive_unwilling else "A"), False
+            if naive_unwilling:
+                return "A候选（待人工确认）", False
+            return ("S" if self.s_nominated(anchor_placements) else "A"), False
         return ceiling, False
 
     def band(
@@ -325,7 +387,7 @@ class BandLattice:
         score = normalized_score(low + (high - low) * self.position(seat, rows))
         return {"score": score, "grade": score_grade(score)}
 
-    def placement(
+    def raw_placement(
         self,
         rows: list[Row],
         *,
@@ -333,11 +395,7 @@ class BandLattice:
         slop_problems: int,
         slop_covered: bool,
     ) -> float:
-        """总分在带位窗口内的位置，落在 [0, 1]。
-
-        `reachable_range` 与实际评分必须走同一条路径，否则可达性模型会与实现漂移
-        ——那正是 A 带死区当初逃脱门禁的机制。
-        """
+        """归一化之前的原始定位。带位之间不可比——各带的可达区间宽窄不同。"""
         seats = sorted(LITERARY_SEATS)
         positions = [self.position(seat, rows) for seat in seats]
         weights = [DEFAULT_BASE_WEIGHTS[seat] for seat in seats]
@@ -353,6 +411,54 @@ class BandLattice:
                 SLOP_POSITION_PENALTY_CAP, SLOP_POSITION_PENALTY * slop_problems
             )
         return max(0.0, min(1.0, value))
+
+    def placement_bounds(self, band: str, demoted: bool) -> tuple[float, float]:
+        """该带位原始定位的可达上下界，由判据表解析导出、不硬编码。
+
+        归一化用它把原始定位拉满 [0,1]，窗口因此被用满。判据表一改，界随之重算；
+        自洽性门禁把这两个数登记在账目里，漂移会被看见。
+        """
+        key = (band, demoted)
+        cached = self._bounds.get(key)
+        if cached is not None:
+            return cached
+        # S 与 A 的准入条件在判据向量上完全相同（S 多的那道来自锚文对照，
+        # 不改变任何判据读数），因此 S 复用 A 的定位界。见 §8.1。
+        source = "A" if band == "S" else band
+        found = self._raw_extremes(source, demoted, modifiers=True)
+        bounds = (0.0, 1.0) if found is None else (found[0][0], found[1][0])
+        if bounds[1] - bounds[0] < 1e-12:  # 退化：该带只有一个可达定位
+            bounds = (bounds[0], bounds[0] + 1.0)
+        self._bounds[key] = bounds
+        return bounds
+
+    def placement(
+        self,
+        rows: list[Row],
+        *,
+        band: str,
+        demoted: bool,
+        originality_bonus: int,
+        slop_problems: int,
+        slop_covered: bool,
+    ) -> float:
+        """带内定位，按该带自身的可达区间归一化到 [0, 1]。
+
+        不归一化的话窗口用不满：进入某带位的条件本身会把原始定位钉在一段窄区间里
+        （A 带最严重，9 分窗口只用得到 2.4 分）。归一化让每个带位的窗口都被用满，
+        「精进工艺」在分数上才有梯度。见 §4.2(b)。
+
+        `reachable` 与实际评分必须走同一条路径，否则可达性模型会与实现漂移
+        ——那正是 A 带死区当初逃脱门禁的机制。
+        """
+        raw = self.raw_placement(
+            rows,
+            originality_bonus=originality_bonus,
+            slop_problems=slop_problems,
+            slop_covered=slop_covered,
+        )
+        low, high = self.placement_bounds(band, demoted)
+        return max(0.0, min(1.0, (raw - low) / (high - low)))
 
     def project(self, window: tuple[int, int], placement: float) -> float:
         low, high = window
@@ -371,62 +477,58 @@ class BandLattice:
         if cached is not None:
             return cached
         craft_ids = self.rubric.craft_set(seat)
+        gate_ids = self.rubric.craft_gate_set(seat)
         entries = [
             (criterion_id, meta)
             for (row_seat, criterion_id), meta in sorted(self.rubric.criteria.items())
             if row_seat == seat
         ]
         craft_size = len(craft_ids)
-        non_craft = [(cid, meta) for cid, meta in entries if cid not in craft_ids]
-        denominator = sum(DEFECT_TIER_WEIGHTS[meta["tier"]] for _, meta in non_craft)
-        best: dict[tuple[float, float, bool, bool], frozenset[str]] = {}
+        gate_size = len(gate_ids)
+        pool = [
+            cid for cid, meta in entries
+            if cid not in craft_ids and meta["tier"] == "extended"
+        ]
+        best: dict[tuple[float, float, float, bool, bool], frozenset[str]] = {}
         for mask in range(1 << len(entries)):
             failed = frozenset(
                 cid for index, (cid, _) in enumerate(entries) if mask >> index & 1
             )
             ratio = (craft_size - len(failed & craft_ids)) / craft_size if craft_size else 0.0
-            weighted = sum(
-                DEFECT_TIER_WEIGHTS[meta["tier"]]
-                for cid, meta in non_craft
-                if cid in failed
+            gate = (gate_size - len(failed & gate_ids)) / gate_size if gate_size else 0.0
+            density = (
+                sum(1 for cid in pool if cid in failed) / len(pool) if pool else 0.0
             )
-            density = weighted / denominator if denominator else 0.0
             tiers = {meta["tier"] for cid, meta in entries if cid in failed}
-            key = (ratio, density, "veto" in tiers, bool(tiers & {"veto", "core"}))
+            key = (ratio, gate, density, "veto" in tiers, bool(tiers & {"veto", "core"}))
             # 见证取失败最少者，回灌时更容易读懂
             if key not in best or len(failed) < len(best[key]):
                 best[key] = failed
         states = [
-            SeatState(seat, ratio, density, high, core, failed)
-            for (ratio, density, high, core), failed in sorted(
+            SeatState(seat, ratio, gate, density, high, core, failed)
+            for (ratio, gate, density, high, core), failed in sorted(
                 best.items(), key=lambda item: item[0]
             )
         ]
         self._states[seat] = states
         return states
 
-    def reachable(
-        self, band: str, *, demoted: bool = False, modifiers: bool = True
-    ) -> Reach | None:
-        """该带位在「每条判据都已判定」前提下可达的总分区间。
+    def _raw_extremes(
+        self, band: str, demoted: bool, *, modifiers: bool
+    ) -> tuple[tuple[float, tuple[SeatState, ...], int, int],
+               tuple[float, tuple[SeatState, ...], int, int]] | None:
+        """该带位**原始定位**的两个极值点及其见证。归一化的输入。
 
-        范围限定于全判定配置：ABSTAIN/NA 会缩小 defect_density 的分母、把密度推向
-        极端，因而真实区间只会更宽不会更窄。这个限定是有意的，也必须随结果一起披露。
-
-        算法（见 docs/SCORING_0_7_DESIGN.md §5.3）：placement 对每个 p_i 单调，
-        故在约束可分离的分支内逐席独立取极点即为全局极值；唯一的非可分离约束是
-        craft_overall 的均值门，由枚举 craft 元组精确覆盖。
+        placement 对每个 p_i 单调，故约束可分离时逐席取极点即全局极值；带位条件只
+        透过 (gate_ratio, 含高严重度 veto, 含 veto/core) 三元看每席，按该三元分组后
+        枚举量降到两万余次，精确且毫秒级。
         """
-        window = self.window(band, demoted)
-        if window is None:
-            return None
         seats = sorted(LITERARY_SEATS)
-        # 逐席按 (craft_ratio, 高严重度 veto, veto/core) 分组，组内取 p 的极值
         grouped: list[dict[tuple[float, bool, bool], tuple[SeatState, SeatState]]] = []
         for seat in seats:
             buckets: dict[tuple[float, bool, bool], tuple[SeatState, SeatState]] = {}
             for state in self.seat_states(seat):
-                key = (state.craft_ratio, state.has_veto_high, state.has_core_problem)
+                key = (state.gate_ratio, state.has_veto_high, state.has_core_problem)
                 low_state, high_state = buckets.get(key, (state, state))
                 if state.position() < low_state.position():
                     low_state = state
@@ -436,8 +538,7 @@ class BandLattice:
             grouped.append(buckets)
 
         target = (band, demoted)
-        best_low: tuple[float, tuple[SeatState, ...]] | None = None
-        best_high: tuple[float, tuple[SeatState, ...]] | None = None
+        best_low = best_high = None
         bonus_low, bonus_high = (0, 5) if modifiers else (0, 0)
         slop_low = (
             int(SLOP_POSITION_PENALTY_CAP / SLOP_POSITION_PENALTY) if modifiers else 0
@@ -450,26 +551,47 @@ class BandLattice:
                 continue
             lows = tuple(grouped[index][key][0] for index, key in enumerate(combo))
             highs = tuple(grouped[index][key][1] for index, key in enumerate(combo))
-            low_value = self.project(
-                window, self._placement_from(lows, bonus_low, slop_low, modifiers)
-            )
-            high_value = self.project(
-                window, self._placement_from(highs, bonus_high, 0, modifiers)
-            )
+            low_value = self._placement_from(lows, bonus_low, slop_low, modifiers)
+            high_value = self._placement_from(highs, bonus_high, 0, modifiers)
             if best_low is None or low_value < best_low[0]:
-                best_low = (low_value, lows)
+                best_low = (low_value, lows, bonus_low, slop_low)
             if best_high is None or high_value > best_high[0]:
-                best_high = (high_value, highs)
+                best_high = (high_value, highs, bonus_high, 0)
         if best_low is None or best_high is None:
             return None
+        return best_low, best_high
+
+    def reachable(
+        self, band: str, *, demoted: bool = False, modifiers: bool = True
+    ) -> Reach | None:
+        """该带位在「每条判据都已判定」前提下可达的总分区间。
+
+        范围限定于全判定配置：ABSTAIN/NA 会缩小 defect_density 的分母、把密度推向
+        极端，因而真实区间只会更宽不会更窄。这个限定是有意的，也必须随结果一起披露。
+        """
+        window = self.window(band, demoted)
+        if window is None:
+            return None
+        found = self._raw_extremes(
+            "A" if band == "S" else band, demoted, modifiers=modifiers
+        )
+        if found is None:
+            return None
+        (raw_low, lows, bonus_low, slop_low), (raw_high, highs, bonus_high, slop_high) = found
+        bound_low, bound_high = self.placement_bounds(band, demoted)
+        span = bound_high - bound_low
+
+        def norm(value: float) -> float:
+            return max(0.0, min(1.0, (value - bound_low) / span))
+
         return Reach(
             band=band,
             demoted=demoted,
             window=window,
-            low=best_low[0],
-            high=best_high[0],
-            witness_low=Witness(best_low[1], bonus_low, slop_low, modifiers),
-            witness_high=Witness(best_high[1], bonus_high, 0, modifiers),
+            low=self.project(window, norm(raw_low)),
+            high=self.project(window, norm(raw_high)),
+            witness_low=Witness(lows, bonus_low, slop_low, modifiers),
+            witness_high=Witness(highs, bonus_high, slop_high, modifiers),
         )
 
     # —— 可达性的内部件 ————————————————————————————
@@ -521,7 +643,15 @@ class BandLattice:
             ("high", reach.witness_high, reach.high),
         ):
             rows = self.materialize(witness)
-            band, demoted = self.band_detail(rows, set(LITERARY_SEATS), False)
+            # S 的证据不在判据行里——它来自锚文对照通道，回灌时必须一并给出，
+            # 否则复算必然退回 A。
+            placements = (
+                {seat: "接近S" for seat in LITERARY_SEATS}
+                if reach.band == "S" else None
+            )
+            band, demoted = self.band_detail(
+                rows, set(LITERARY_SEATS), False, anchor_placements=placements
+            )
             if (band, demoted) != (reach.band, reach.demoted):
                 problems.append(
                     f"{label} 见证复算出的带位是 {band}(demoted={demoted})，"
@@ -534,6 +664,8 @@ class BandLattice:
                 window,
                 self.placement(
                     rows,
+                    band=band,
+                    demoted=demoted,
                     originality_bonus=witness.originality_bonus,
                     slop_problems=witness.slop_problems,
                     slop_covered=witness.modifiers,

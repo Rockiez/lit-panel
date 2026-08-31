@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from band_lattice import (
+    FALLBACK_CAP,
+    FIDELITY_B_CAP,
+    FIDELITY_FAILURE_WINDOW,
     BandLattice,
     JudgmentVector,
     Rubric,
@@ -41,15 +44,20 @@ LITERARY_DIMENSIONS = {
     "prose": "lit-prose",
     "resonance": "lit-resonance",
 }
-SCORE_FORMULA_VERSION = "0.6.0-band-anchored"
+SCORE_FORMULA_VERSION = "0.7.0-full-partition"
 EMPTY_SCORE_BASELINE = 50
+# 回退链内部代理量纲，已按新阶梯重映射；不对外作为维度分呈现（§4.4/§4.5）。
+FIDELITY_PROXY = {"A": 79, "B": 60, "C": 40}
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 3}
 
 # 带位格的判据集、天花板门限、窗口与定位权重现由 band_lattice 持有；
 # craft set 的真源是判据表的 `## craft set 判据集` 小节，此处不再留副本。
 
-BAND_RANKS = {"A": 3.0, "A候选（待人工确认）": 3.0, "B": 2.0, "C": 1.0}
-PLACEMENT_RANKS = {"接近A": 3.0, "介于A-B": 2.5, "接近B": 2.0, "介于B-C": 1.5, "低于C": 1.0}
+BAND_RANKS = {"S": 4.0, "A": 3.0, "A候选（待人工确认）": 3.0, "B": 2.0, "C": 1.0}
+PLACEMENT_RANKS = {
+    "接近S": 4.0, "接近A": 3.0, "介于A-B": 2.5,
+    "接近B": 2.0, "介于B-C": 1.5, "低于C": 1.0,
+}
 ANCHOR_DIVERGENCE_RANKS = 2.0
 
 
@@ -250,6 +258,7 @@ def derive_scores(
     outputs: list[dict[str, Any]],
     *,
     lattice: BandLattice,
+    anchor_placements: dict[str, str] | None = None,
     blockers: list[str] | None = None,
     provisional_reasons: list[str] | None = None,
     formal: bool | None = None,
@@ -269,11 +278,15 @@ def derive_scores(
         blockers = ["旧版评分合同未形成正式带位"]
     provisional_reasons = blockers + provisional_reasons
     covered_seats = {output["seat"] for output in outputs}
+    # 只有这四个是带位窗口投影，彼此可比、与总分同一把尺。
     dimensions: dict[str, dict[str, int | float | str] | None] = {
         "structure": None,
         "character": None,
         "prose": None,
         "resonance": None,
+    }
+    # 诊断维度各有各的原生单位，不再以 0-100 冒充带位维度分（§4.4）。
+    diagnostics: dict[str, dict[str, Any] | None] = {
         "ai_cleanliness": None,
         "reader_experience": None,
         "fidelity": None,
@@ -284,7 +297,9 @@ def derive_scores(
             "评分席位未覆盖（未参与对应维度）: " + ", ".join(missing_seats)
         )
 
-    band, demoted = lattice.band_detail(judgments, covered_seats, reader_warning)
+    band, demoted = lattice.band_detail(
+        judgments, covered_seats, reader_warning, anchor_placements=anchor_placements
+    )
     window = lattice.window(band, demoted)
     if window is not None:
         for dimension, seat in LITERARY_DIMENSIONS.items():
@@ -298,13 +313,22 @@ def derive_scores(
     slop_penalty = min(10, slop_problems * 3) if "lit-slop" in covered_seats else 0
     ai_score: int | float | None = None
     if "lit-slop" in covered_seats:
+        # 分数只在内部充当回退量纲；对外报检出处数。
         ai_score = normalized_score(100 - slop_penalty)
-        dimensions["ai_cleanliness"] = {
-            "score": ai_score,
-            "grade": score_grade(ai_score),
+        severe = sum(
+            output["seat"] == "lit-slop"
+            and is_problem(metadata["polarity"], criterion["verdict"])
+            and criterion["severity"] in {"high", "medium"}
+            for output, criterion, metadata in judgments
+        )
+        diagnostics["ai_cleanliness"] = {
+            "detected": slop_problems,
+            "severe": severe,
+            "mild": slop_problems - severe,
         }
 
     reader_scores: list[int | float] = []
+    reader_problem_total = 0
     for output in outputs:
         if output["seat"] != "lit-naive-reader":
             continue
@@ -313,51 +337,66 @@ def derive_scores(
             and is_problem(metadata["polarity"], criterion["verdict"])
             for row_output, criterion, metadata in judgments
         )
+        reader_problem_total += problems
         reader_scores.append(normalized_score(85 - problems * 10))
     reader_score: int | float | None = None
     if reader_scores:
         reader_score = normalized_score(sum(reader_scores) / len(reader_scores))
-        dimensions["reader_experience"] = {
-            "score": reader_score,
-            "grade": score_grade(reader_score),
+        diagnostics["reader_experience"] = {
+            "readers": len(reader_scores),
+            "problems": reader_problem_total,
+            "share_warning": reader_warning,
         }
 
     if fidelity in {"A", "B", "C"}:
-        fidelity_score = {"A": 90, "B": 65, "C": 45}[fidelity]
-        dimensions["fidelity"] = {
-            "score": fidelity_score,
-            "grade": score_grade(fidelity_score),
-        }
+        diagnostics["fidelity"] = {"band": fidelity}
 
     bonus = originality_bonus(judgments) if "lit-originality" in covered_seats else 0
     if window is not None:
-        total = lattice.project(
-            window,
-            lattice.placement(
-                judgments,
-                originality_bonus=bonus,
-                slop_problems=slop_problems,
-                slop_covered="lit-slop" in covered_seats,
-            ),
+        placement = lattice.placement(
+            judgments,
+            band=band,
+            demoted=demoted,
+            originality_bonus=bonus,
+            slop_problems=slop_problems,
+            slop_covered="lit-slop" in covered_seats,
         )
-    elif reader_score is not None:
-        total = reader_score - slop_penalty + bonus
-        provisional_reasons.append("未覆盖文学维度，总分回退使用读者体验基线")
-    elif ai_score is not None:
-        total = ai_score + bonus
-        provisional_reasons.append("未覆盖文学维度与读者体验，总分回退使用 AI 洁净度")
-    elif dimensions["fidelity"] is not None:
-        total = dimensions["fidelity"]["score"] + bonus
-        provisional_reasons.append("未覆盖文学维度，总分回退使用忠实度")
+        total = lattice.project(window, placement)
     else:
-        total = EMPTY_SCORE_BASELINE + bonus
-        provisional_reasons.append(
-            f"无可用评分维度，总分使用固定诊断基线 {EMPTY_SCORE_BASELINE}"
-        )
+        placement = None
+        # 回退链：文学带 N/A。代理值只在内部充当量纲，不再作为维度分对外呈现。
+        if reader_score is not None:
+            total = reader_score - slop_penalty + bonus
+            provisional_reasons.append("未覆盖文学维度，总分回退使用读者体验基线")
+        elif ai_score is not None:
+            total = ai_score + bonus
+            provisional_reasons.append("未覆盖文学维度与读者体验，总分回退使用 AI 洁净度")
+        elif fidelity in {"A", "B", "C"}:
+            total = FIDELITY_PROXY[fidelity] + bonus
+            provisional_reasons.append("未覆盖文学维度，总分回退使用忠实度")
+        else:
+            total = EMPTY_SCORE_BASELINE + bonus
+            provisional_reasons.append(
+                f"无可用评分维度，总分使用固定诊断基线 {EMPTY_SCORE_BASELINE}"
+            )
+        # A 与 S 的准入前提是四个文学席到齐，而回退启动的条件恰恰是它们缺席：
+        # 评不了文学质量就不能发 A 以上。见 §4.5。
+        if total > FALLBACK_CAP:
+            total = FALLBACK_CAP
+            provisional_reasons.append(
+                f"回退总分封顶 {FALLBACK_CAP}：未覆盖文学维度，不得进入 A/S 区间"
+            )
     if fidelity == "C":
-        total = min(total, 45)
+        # 忠实 C 不再钳位，而是投影进专区——钳位只会产出一个点，
+        # 0 到该点之间将无人认领。写得好的出局与写得烂的出局仍需可分。见 §3.1。
+        low, high = FIDELITY_FAILURE_WINDOW
+        share = placement if placement is not None else (total / 100.0)
+        total = lattice.project((low, high), max(0.0, min(1.0, share)))
+        provisional_reasons.append(
+            f"忠实带 C：总分投影进忠实失败区 {low}–{high}"
+        )
     elif fidelity == "B":
-        total = min(total, 75)
+        total = min(total, FIDELITY_B_CAP)
     total_score = normalized_score(total)
     result = {
         "available": True,
@@ -367,6 +406,7 @@ def derive_scores(
         "originality_bonus": bonus,
         "reader_warning": reader_warning,
         "dimensions": dimensions,
+        "diagnostics": diagnostics,
     }
     if not legacy_contract:
         result.update({
@@ -428,28 +468,39 @@ def write_markdown(
             "|---|---:|---|",
         ])
         labels = {
-            "fidelity": "忠实度",
             "structure": "结构",
             "character": "人物",
             "prose": "语言",
             "resonance": "情感",
-            "ai_cleanliness": "AI 洁净度",
-            "reader_experience": "读者体验",
         }
-        for key in (
-            "fidelity", "structure", "character", "prose", "resonance",
-            "ai_cleanliness", "reader_experience",
-        ):
+        for key in ("structure", "character", "prose", "resonance"):
             dimension = scores["dimensions"][key]
             if dimension is not None:
                 lines.append(
                     f"| {labels[key]} | {dimension['score']} | {dimension['grade']} |"
                 )
-            elif key == "fidelity":
-                lines.append("| 忠实度 | 未评测（缺少来源或来源不足） | — |")
             else:
                 lines.append(f"| {labels[key]} | 未评测（席位未覆盖） | — |")
         lines.append(f"| 原创加分 | +{scores['originality_bonus']} | — |")
+        # 诊断维度不在带位阶梯上，各有各的原生单位，不与上表相比（§4.4）。
+        diagnostics = scores.get("diagnostics") or {}
+        lines.extend(["", "### 诊断维度（各自的尺，不可与上表相比）", ""])
+        ai = diagnostics.get("ai_cleanliness")
+        lines.append(
+            f"- AI 痕迹：检出 {ai['detected']} 处（重 {ai['severe']} / 轻 {ai['mild']}）"
+            if ai else "- AI 痕迹：未评测（席位未覆盖）"
+        )
+        reader = diagnostics.get("reader_experience")
+        lines.append(
+            f"- 素读者：{reader['readers']} 位，共 {reader['problems']} 处不适；"
+            + ("有传播意愿预警" if reader["share_warning"] else "无传播意愿预警")
+            if reader else "- 素读者：未评测（席位未覆盖）"
+        )
+        fidelity_diag = diagnostics.get("fidelity")
+        lines.append(
+            f"- 忠实度：{fidelity_diag['band']}"
+            if fidelity_diag else "- 忠实度：未评测（缺少来源或来源不足）"
+        )
         if scores["status_reasons"]:
             lines.extend(["", "评分状态说明："])
             lines.extend(f"- {reason}" for reason in scores["status_reasons"])
@@ -786,10 +837,21 @@ def main() -> int:
         and not coverage_gaps
     )
     covered_seats = {output["seat"] for output in outputs}
+    # 锚文对照只有核心四席可以输出；它是 S 唯一的证据来源（§4.1）。
+    anchor_placements = {
+        output["seat"]: output["anchor_comparison"]["placement"]
+        for output in outputs
+        if output["seat"] in LITERARY_SEATS
+        and isinstance(output.get("anchor_comparison"), dict)
+        and "placement" in output["anchor_comparison"]
+    }
     if formal:
         fidelity: str | None = fidelity_band(vector.formal())
         band, craft_gate_demoted = lattice.band_detail(
-            vector.formal(), covered_seats, bool(naive_unwilling_outputs)
+            vector.formal(),
+            covered_seats,
+            bool(naive_unwilling_outputs),
+            anchor_placements=anchor_placements,
         )
         literary: str | None = band
         final_recommendation = recommendation(fidelity, band)
@@ -837,6 +899,7 @@ def main() -> int:
         vector.frozen(),
         outputs,
         lattice=lattice,
+        anchor_placements=anchor_placements,
         blockers=scoring_execution_issues(manifest, execution, outputs),
         provisional_reasons=score_provisional_reasons,
         fidelity=score_fidelity,

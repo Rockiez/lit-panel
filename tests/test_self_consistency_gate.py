@@ -34,6 +34,7 @@ LEDGER = Path(__file__).resolve().parent / "golden" / "self_consistency_ledger.j
 
 # 机械带位能形成窗口的全部 (band, demoted) 组合。
 BANDS: tuple[tuple[str, bool], ...] = (
+    ("S", False),
     ("A", False),
     ("B", False),
     ("B", True),
@@ -71,7 +72,9 @@ def audit() -> dict[str, Any]:
     reaches = []
     feedback_failures: list[str] = []
     for band, demoted in BANDS:
-        reach = engine.reachable(band, demoted=demoted, modifiers=False)
+        # 与归一化界同口径：界按 modifiers=True 导出，测量也必须带修饰量，
+        # 否则量程口径不一致会报出假背离。
+        reach = engine.reachable(band, demoted=demoted, modifiers=True)
         if reach is None:
             feedback_failures.append(f"{band}(demoted={demoted}) 无可达配置")
             continue
@@ -93,19 +96,24 @@ def audit() -> dict[str, Any]:
                 "utilisation": round(reach.utilisation, 4),
             })
 
-    # 检查二：每个对外分档标签是否至少有一个可达分数（限满覆盖的窗口投影路径）
+    # 忠实失败区不由文学带产生，而由忠实轴：忠实 C 把文学定位投影进 [0,39]（§3.1）。
+    # 定位本身跨满 [0,1]，因此整段有主。它必须参与档位覆盖检查，否则该段会被误报为空洞。
+    fidelity_zone = band_lattice.FIDELITY_FAILURE_WINDOW
+    spans = [(reach.low, reach.high) for reach in reaches]
+    spans.append((float(fidelity_zone[0]), float(fidelity_zone[1])))
+
+    # 检查二：每个对外分档标签是否至少有一个可达分数
     unreachable_labels = []
     for label, low, high in grade_bands():
-        if not any(reach.low <= high and reach.high >= low for reach in reaches):
+        if not any(lo <= high and hi >= low for lo, hi in spans):
             unreachable_labels.append(label)
 
     # 检查二之二：同一个标签是否被多个带位共用（读者无法从标签反推带位）
     overloaded = {}
     for label, low, high in grade_bands():
         owners = sorted(
-            reach.label
-            for reach in reaches
-            if reach.low <= high and reach.high >= low
+            [reach.label for reach in reaches if reach.low <= high and reach.high >= low]
+            + (["忠实失败区"] if fidelity_zone[0] <= high and fidelity_zone[1] >= low else [])
         )
         if len(owners) > 1:
             overloaded[label] = owners
@@ -113,8 +121,8 @@ def audit() -> dict[str, Any]:
     return {
         "scope": (
             "全判定配置（每条判据均为 YES/NO）下的窗口投影路径；"
-            "不含 ABSTAIN/NA 与未覆盖文学维度时的回退链，"
-            "两者只会让实际区间更宽。modifiers=False：不含原创性奖励与 slop 惩罚。"
+            "不含 ABSTAIN/NA 与未覆盖文学维度时的回退链，两者只会让实际区间更宽。"
+            "modifiers=True：含原创性奖励与 slop 惩罚，与归一化界同口径。"
         ),
         "window_divergences": window_divergences,
         "unreachable_grade_labels": unreachable_labels,

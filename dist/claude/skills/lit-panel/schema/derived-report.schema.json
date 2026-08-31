@@ -4,129 +4,511 @@
   "title": "lit-panel deterministic derived report",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "run_id", "formal", "run", "execution", "coverage_gaps", "bands", "scores", "recommendation", "red_flags", "revisions", "arbitration", "seat_views", "verification"],
+  "required": [
+    "schema_version",
+    "run_id",
+    "formal",
+    "run",
+    "execution",
+    "coverage_gaps",
+    "bands",
+    "scores",
+    "recommendation",
+    "red_flags",
+    "revisions",
+    "arbitration",
+    "seat_views",
+    "verification"
+  ],
   "properties": {
-    "schema_version": { "const": "1.2" },
-    "run_id": { "type": "string", "minLength": 1 },
-    "formal": { "type": "boolean" },
+    "schema_version": {
+      "const": "1.2"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "formal": {
+      "type": "boolean"
+    },
     "run": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["preset", "genre", "readers", "cross_chapter_source", "selected_seats", "skipped_seats"],
+      "required": [
+        "preset",
+        "genre",
+        "readers",
+        "cross_chapter_source",
+        "selected_seats",
+        "skipped_seats"
+      ],
       "properties": {
-        "preset": { "type": "string" },
-        "genre": { "enum": ["memoir", "other"] },
-        "readers": { "type": "integer", "minimum": 1 },
-        "cross_chapter_source": { "type": "boolean" },
-        "selected_seats": { "type": "array", "items": { "type": "string" } },
-        "skipped_seats": { "type": "array", "items": { "$ref": "#/$defs/skippedSeat" } }
+        "preset": {
+          "type": "string"
+        },
+        "genre": {
+          "enum": [
+            "memoir",
+            "other"
+          ]
+        },
+        "readers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cross_chapter_source": {
+          "type": "boolean"
+        },
+        "selected_seats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skipped_seats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/skippedSeat"
+          }
+        }
       }
     },
     "execution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["host", "native_subagents", "degraded", "completed_dispatches", "total_dispatches"],
+      "required": [
+        "host",
+        "native_subagents",
+        "degraded",
+        "completed_dispatches",
+        "total_dispatches"
+      ],
       "properties": {
-        "host": { "$ref": "#/$defs/host" },
-        "native_subagents": { "type": "boolean" },
-        "degraded": { "type": "boolean" },
-        "completed_dispatches": { "type": "integer", "minimum": 0 },
-        "total_dispatches": { "type": "integer", "minimum": 0 }
+        "host": {
+          "$ref": "#/$defs/host"
+        },
+        "native_subagents": {
+          "type": "boolean"
+        },
+        "degraded": {
+          "type": "boolean"
+        },
+        "completed_dispatches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_dispatches": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "coverage_gaps": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "coverage_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "bands": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fidelity", "literary"],
+      "required": [
+        "fidelity",
+        "literary"
+      ],
       "properties": {
-        "fidelity": { "type": ["string", "null"], "enum": ["A", "B", "C", "N/A", null] },
-        "literary": { "type": ["string", "null"], "enum": ["A", "B", "C", "N/A", "A候选（待人工确认）", null] }
+        "fidelity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "N/A",
+            null
+          ]
+        },
+        "literary": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "S",
+            "A",
+            "B",
+            "C",
+            "N/A",
+            "A候选（待人工确认）",
+            null
+          ]
+        }
       }
     },
     "scores": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["available", "status", "status_reasons", "formula_version", "total", "grade", "originality_bonus", "reader_warning", "dimensions"],
+      "required": [
+        "available",
+        "status",
+        "status_reasons",
+        "formula_version",
+        "total",
+        "grade",
+        "originality_bonus",
+        "reader_warning",
+        "dimensions",
+        "diagnostics"
+      ],
       "properties": {
-        "available": { "type": "boolean" },
-        "status": { "enum": ["verified", "provisional", "unavailable"] },
+        "available": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "provisional",
+            "unavailable"
+          ]
+        },
         "status_reasons": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         },
-        "formula_version": { "const": "0.6.0-band-anchored" },
-        "total": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
-        "grade": { "type": ["string", "null"], "enum": ["A", "A-", "B+", "B", "C+", "C", "D", null] },
-        "originality_bonus": { "type": ["integer", "null"], "enum": [0, 3, 5, null] },
-        "reader_warning": { "type": "boolean" },
+        "formula_version": {
+          "const": "0.6.0-band-anchored"
+        },
+        "total": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "grade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "A",
+            "A-",
+            "B+",
+            "B",
+            "C+",
+            "C",
+            "D",
+            null
+          ]
+        },
+        "originality_bonus": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "enum": [
+            0,
+            3,
+            5,
+            null
+          ]
+        },
+        "reader_warning": {
+          "type": "boolean"
+        },
         "dimensions": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["structure", "character", "prose", "resonance", "ai_cleanliness", "reader_experience", "fidelity"],
+          "required": [
+            "structure",
+            "character",
+            "prose",
+            "resonance"
+          ],
           "properties": {
-            "structure": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
-            "character": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
-            "prose": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
-            "resonance": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
-            "ai_cleanliness": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
-            "reader_experience": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] },
-            "fidelity": { "anyOf": [{ "$ref": "#/$defs/scoreDimension" }, { "type": "null" }] }
+            "structure": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/scoreDimension"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "character": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/scoreDimension"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "prose": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/scoreDimension"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "resonance": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/scoreDimension"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "description": "带位窗口投影出的四个文学维度，彼此可比、与总分同一把尺。"
+        },
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "诊断维度：各有各的原生单位，不在带位阶梯上，不得与 dimensions 相比。",
+          "required": [
+            "ai_cleanliness",
+            "reader_experience",
+            "fidelity"
+          ],
+          "properties": {
+            "ai_cleanliness": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "detected",
+                "severe",
+                "mild"
+              ],
+              "properties": {
+                "detected": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "severe": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "mild": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "reader_experience": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "readers",
+                "problems",
+                "share_warning"
+              ],
+              "properties": {
+                "readers": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "problems": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "share_warning": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "fidelity": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "band"
+              ],
+              "properties": {
+                "band": {
+                  "enum": [
+                    "A",
+                    "B",
+                    "C",
+                    "N/A"
+                  ]
+                }
+              }
+            }
           }
         }
       },
       "allOf": [
         {
-          "if": { "properties": { "available": { "const": false } }, "required": ["available"] },
+          "if": {
+            "properties": {
+              "available": {
+                "const": false
+              }
+            },
+            "required": [
+              "available"
+            ]
+          },
           "then": {
             "properties": {
-              "status": { "const": "unavailable" },
-              "total": { "const": null },
-              "grade": { "const": null },
-              "originality_bonus": { "const": null },
+              "status": {
+                "const": "unavailable"
+              },
+              "total": {
+                "const": null
+              },
+              "grade": {
+                "const": null
+              },
+              "originality_bonus": {
+                "const": null
+              },
               "dimensions": {
                 "properties": {
-                  "structure": { "const": null },
-                  "character": { "const": null },
-                  "prose": { "const": null },
-                  "resonance": { "const": null },
-                  "ai_cleanliness": { "const": null },
-                  "reader_experience": { "const": null },
-                  "fidelity": { "const": null }
+                  "structure": {
+                    "const": null
+                  },
+                  "character": {
+                    "const": null
+                  },
+                  "prose": {
+                    "const": null
+                  },
+                  "resonance": {
+                    "const": null
+                  },
+                  "ai_cleanliness": {
+                    "const": null
+                  },
+                  "reader_experience": {
+                    "const": null
+                  },
+                  "fidelity": {
+                    "const": null
+                  }
                 }
               }
             }
           },
           "else": {
             "properties": {
-              "status": { "enum": ["verified", "provisional"] },
-              "total": { "type": "number" },
-              "grade": { "enum": ["A", "A-", "B+", "B", "C+", "C", "D"] },
-              "originality_bonus": { "enum": [0, 3, 5] }
+              "status": {
+                "enum": [
+                  "verified",
+                  "provisional"
+                ]
+              },
+              "total": {
+                "type": "number"
+              },
+              "grade": {
+                "enum": [
+                  "A",
+                  "A-",
+                  "B+",
+                  "B",
+                  "C+",
+                  "C",
+                  "D"
+                ]
+              },
+              "originality_bonus": {
+                "enum": [
+                  0,
+                  3,
+                  5
+                ]
+              }
             }
           }
         }
       ]
     },
-    "recommendation": { "enum": ["交付", "修订后交付", "重写建议", "仅诊断", "待人工确认"] },
-    "red_flags": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
-    "revisions": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
-    "arbitration": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "recommendation": {
+      "enum": [
+        "交付",
+        "修订后交付",
+        "重写建议",
+        "仅诊断",
+        "待人工确认"
+      ]
+    },
+    "red_flags": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "revisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "arbitration": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
     "seat_views": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["seat", "reader_id", "free_view", "reader"],
+        "required": [
+          "seat",
+          "reader_id",
+          "free_view",
+          "reader"
+        ],
         "properties": {
-          "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
-          "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
-          "free_view": { "type": "string" },
+          "seat": {
+            "type": "string",
+            "pattern": "^lit-[a-z0-9-]+$"
+          },
+          "reader_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^reader-[0-9]{2,}$"
+          },
+          "free_view": {
+            "type": "string"
+          },
           "reader": {
             "anyOf": [
-              { "$ref": "#/$defs/reader" },
-              { "type": "null" }
+              {
+                "$ref": "#/$defs/reader"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -135,37 +517,86 @@
     "verification": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["verified", "invalidated"],
+      "required": [
+        "verified",
+        "invalidated"
+      ],
       "properties": {
-        "verified": { "type": "integer", "minimum": 0 },
-        "invalidated": { "type": "integer", "minimum": 0 }
+        "verified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalidated": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   },
   "allOf": [
     {
-      "if": { "properties": { "formal": { "const": false } }, "required": ["formal"] },
+      "if": {
+        "properties": {
+          "formal": {
+            "const": false
+          }
+        },
+        "required": [
+          "formal"
+        ]
+      },
       "then": {
         "properties": {
           "bands": {
-            "properties": { "fidelity": { "const": null }, "literary": { "const": null } }
+            "properties": {
+              "fidelity": {
+                "const": null
+              },
+              "literary": {
+                "const": null
+              }
+            }
           },
-          "recommendation": { "const": "仅诊断" }
+          "recommendation": {
+            "const": "仅诊断"
+          }
         }
       },
       "else": {
         "properties": {
-          "coverage_gaps": { "maxItems": 0 },
+          "coverage_gaps": {
+            "maxItems": 0
+          },
           "execution": {
             "properties": {
-              "native_subagents": { "const": true },
-              "degraded": { "const": false }
+              "native_subagents": {
+                "const": true
+              },
+              "degraded": {
+                "const": false
+              }
             }
           },
           "bands": {
             "properties": {
-              "fidelity": { "enum": ["A", "B", "C", "N/A"] },
-              "literary": { "enum": ["A", "B", "C", "N/A", "A候选（待人工确认）"] }
+              "fidelity": {
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "N/A"
+                ]
+              },
+              "literary": {
+                "enum": [
+                  "S",
+                  "A",
+                  "B",
+                  "C",
+                  "N/A",
+                  "A候选（待人工确认）"
+                ]
+              }
             }
           }
         }
@@ -176,58 +607,151 @@
     "host": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version"],
+      "required": [
+        "name",
+        "version"
+      ],
       "properties": {
-        "name": { "enum": ["codex", "claude-code", "antigravity"] },
-        "version": { "type": "string", "minLength": 1 }
+        "name": {
+          "enum": [
+            "codex",
+            "claude-code",
+            "antigravity"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "skippedSeat": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["number", "seat", "reason", "warning"],
+      "required": [
+        "number",
+        "seat",
+        "reason",
+        "warning"
+      ],
       "properties": {
-        "number": { "type": "string", "pattern": "^[0-9]{2}$" },
-        "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
-        "reason": { "type": "string", "minLength": 1 },
-        "warning": { "type": "boolean" }
+        "number": {
+          "type": "string",
+          "pattern": "^[0-9]{2}$"
+        },
+        "seat": {
+          "type": "string",
+          "pattern": "^lit-[a-z0-9-]+$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "warning": {
+          "type": "boolean"
+        }
       }
     },
     "reader": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["experience", "required_answers", "willing_to_share"],
+      "required": [
+        "experience",
+        "required_answers",
+        "willing_to_share"
+      ],
       "properties": {
-        "experience": { "type": "string", "minLength": 1 },
+        "experience": {
+          "type": "string",
+          "minLength": 1
+        },
         "required_answers": {
           "type": "array",
           "minItems": 3,
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "willing_to_share": { "enum": ["愿意", "不愿意"] }
+        "willing_to_share": {
+          "enum": [
+            "愿意",
+            "不愿意"
+          ]
+        }
       }
     },
     "scoreDimension": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["score", "grade"],
+      "required": [
+        "score",
+        "grade"
+      ],
       "properties": {
-        "score": { "type": "number", "minimum": 0, "maximum": 100 },
-        "grade": { "enum": ["A", "A-", "B+", "B", "C+", "C", "D"] }
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "grade": {
+          "enum": [
+            "A",
+            "A-",
+            "B+",
+            "B",
+            "C+",
+            "C",
+            "D"
+          ]
+        }
       }
     },
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["seat", "reader_id", "criterion_id", "severity", "reason"],
+      "required": [
+        "seat",
+        "reader_id",
+        "criterion_id",
+        "severity",
+        "reason"
+      ],
       "properties": {
-        "seat": { "type": "string", "pattern": "^lit-[a-z0-9-]+$" },
-        "reader_id": { "type": ["string", "null"], "pattern": "^reader-[0-9]{2,}$" },
-        "criterion_id": { "type": "string", "minLength": 1 },
-        "severity": { "enum": ["high", "medium", "low", "none"] },
-        "reason": { "type": "string", "minLength": 1 },
-        "quote": { "type": "string" },
-        "recommendation": { "type": "string", "minLength": 1 }
+        "seat": {
+          "type": "string",
+          "pattern": "^lit-[a-z0-9-]+$"
+        },
+        "reader_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^reader-[0-9]{2,}$"
+        },
+        "criterion_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "none"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   }

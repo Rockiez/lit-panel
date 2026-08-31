@@ -39,16 +39,26 @@ BANDS: tuple[tuple[str, bool], ...] = (
     ("B", True),
     ("C", False),
 )
-# 对外展示的分档标签及其区间（derive_report.score_grade 的离散化）。
-GRADE_BANDS: tuple[tuple[str, float, float], ...] = (
-    ("A", 90, 100),
-    ("A-", 85, 89.999999),
-    ("B+", 80, 84.999999),
-    ("B", 70, 79.999999),
-    ("C+", 60, 69.999999),
-    ("C", 45, 59.999999),
-    ("D", 0, 44.999999),
-)
+
+
+def grade_bands() -> tuple[tuple[str, float, float], ...]:
+    """从 `score_grade` 本身探测出档位区间，**不复制一份阈值表**。
+
+    这里曾经硬编码过一份区间表，于是改 score_grade 的阈值门禁毫无反应——
+    门禁自己犯了它要防的「第二真源」错误，由变异测试抓出。分数经
+    normalized_score 后是两位小数，按 0.01 步长扫描即可穷尽定义域。
+    """
+    bounds: dict[str, list[float]] = {}
+    for step in range(0, 10001):
+        value = round(step / 100, 2)
+        label = band_lattice.score_grade(value)
+        span = bounds.setdefault(label, [value, value])
+        span[0] = min(span[0], value)
+        span[1] = max(span[1], value)
+    return tuple(
+        (label, span[0], span[1])
+        for label, span in sorted(bounds.items(), key=lambda item: -item[1][1])
+    )
 
 
 def lattice() -> band_lattice.BandLattice:
@@ -85,13 +95,13 @@ def audit() -> dict[str, Any]:
 
     # 检查二：每个对外分档标签是否至少有一个可达分数（限满覆盖的窗口投影路径）
     unreachable_labels = []
-    for label, low, high in GRADE_BANDS:
+    for label, low, high in grade_bands():
         if not any(reach.low <= high and reach.high >= low for reach in reaches):
             unreachable_labels.append(label)
 
     # 检查二之二：同一个标签是否被多个带位共用（读者无法从标签反推带位）
     overloaded = {}
-    for label, low, high in GRADE_BANDS:
+    for label, low, high in grade_bands():
         owners = sorted(
             reach.label
             for reach in reaches

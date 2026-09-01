@@ -21,7 +21,7 @@ NAIVE_STEP_1_PROMPT = (
     "也不要使用评审术语。执行器必须保存该 UTF-8 原文的 SHA-256。"
 )
 ANCHOR_SEATS = {"04", "05", "06", "07"}
-ANCHOR_FILES = ("band-a.md", "band-b.md", "band-c.md")
+ANCHOR_FILES = ("band-a.md", "band-b.md", "band-c.md", "band-s.md")
 STEP_1_RECEIPT_CONTRACT = {
     "format": "utf-8-text",
     "required": True,

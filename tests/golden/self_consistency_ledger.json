@@ -1,0 +1,22 @@
+{
+  "coarse_defect_density": {
+    "lit-character": {
+      "density_levels": 3,
+      "non_craft_extended": [
+        "P6",
+        "TW6"
+      ]
+    },
+    "lit-prose": {
+      "density_levels": 2,
+      "non_craft_extended": [
+        "L6"
+      ]
+    }
+  },
+  "feedback_failures": [],
+  "overloaded_grade_labels": {},
+  "scope": "全判定配置（每条判据均为 YES/NO）下的窗口投影路径；不含 ABSTAIN/NA 与未覆盖文学维度时的回退链，两者只会让实际区间更宽。modifiers=True：含原创性奖励与 slop 惩罚，与归一化界同口径。",
+  "unreachable_grade_labels": [],
+  "window_divergences": []
+}
